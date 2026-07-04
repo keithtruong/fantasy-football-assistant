@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Environments / secrets
+.env
+.env.*
+*.key
+
+# Dependencies (adjust once tech stack is chosen)
+node_modules/
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Logs
+*.log
