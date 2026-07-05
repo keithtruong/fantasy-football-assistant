@@ -11,12 +11,27 @@ Thumbs.db
 .env.*
 *.key
 
+# Yahoo OAuth tokens (rewritten in-place by yahoo_oauth on token refresh)
+.yahoo_oauth.json
+
+# Rankings-provider session cookie + source URLs (never name the actual source
+# here or anywhere committed — see CLAUDE.md's confidentiality rule)
+.rankings_config.json
+
 # Dependencies (adjust once tech stack is chosen)
 node_modules/
 __pycache__/
 *.pyc
 venv/
 .venv/
+
+# Local SQLite database (synced by hand between machines, not via git)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
+# Cached platform data (large, regenerable from the live API)
+data/*.json
 
 # Logs
 *.log

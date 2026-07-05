@@ -38,14 +38,14 @@ Newest entries at the top.
 
 ## 2026-07-04 — In-season tool design
 
-**Context:** Keith walked through his actual weekly routine: Tuesday night waiver prep (before ETR's weekly refresh, so more subjective), Wednesday night once ETR's rest-of-season and weekly rankings are both out (waiver targets + setting lineups), then Thursday/Sunday-morning/Monday re-checks before each slate locks. He also pointed to the legacy "Weekly Rank Eval" tab (Manager 2025.xlsm) as the reference for two of the views.
+**Context:** Keith walked through his actual weekly routine: Tuesday night waiver prep (before the rankings provider's weekly refresh, so more subjective), Wednesday night once the rankings provider's rest-of-season and weekly rankings are both out (waiver targets + setting lineups), then Thursday/Sunday-morning/Monday re-checks before each slate locks. He also pointed to the legacy "Weekly Rank Eval" tab (Manager 2025.xlsm) as the reference for two of the views.
 
 **Decisions:**
 
 - **Two core views, mirroring the legacy sheet exactly:** Weekly (Rostered | Available) and Rest-of-season (Rostered | Available), both grouped by position, scoped to one league at a time via the shared league-selector pattern.
 - **Thursday/Sunday/Monday re-checks reuse the Wednesday lineup view as-is** — same screen, just reopened with whatever's refreshed since, rather than a separate "what changed" diff view.
 - **Swap-candidate judgment calls shown as plain numbers, not a computed threshold** — same approach as the draft tool's ADP lookahead: your starter's rank sits next to the closest bench alternatives at that position, and Keith makes the call rather than the tool deciding what counts as "close enough."
-- **Tuesday's pre-ETR step gets lightweight support, built around ETR's separate "Waiver Wire" suggestion content** (distinct from its numeric rankings tables — a written list of recommended pickups). The tool cross-references those suggested names against what's actually available (unrostered) in each of Keith's leagues, shown alongside his own worst-ranked players per position using the last available data (since that week's rankings refresh hasn't happened yet). This means the rankings-ingestion layer needs to handle more than tables — it also needs to parse an editorial suggestion list as its own content type.
+- **Tuesday's pre-refresh step gets lightweight support, built around the rankings provider's separate "Waiver Wire" suggestion content** (distinct from its numeric rankings tables — a written list of recommended pickups). The tool cross-references those suggested names against what's actually available (unrostered) in each of Keith's leagues, shown alongside his own worst-ranked players per position using the last available data (since that week's rankings refresh hasn't happened yet). This means the rankings-ingestion layer needs to handle more than tables — it also needs to parse an editorial suggestion list as its own content type.
 - **Automation stays hybrid, as already decided for the core architecture** — scheduled pulls for the routine Tuesday/Wednesday/Thursday/Sunday/Monday refreshes, with manual/on-demand refresh always available too.
 
 **Follow-up: "worst players" and "available" list behavior**

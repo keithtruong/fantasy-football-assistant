@@ -1,0 +1,5 @@
+requests>=2.31
+Flask>=3.1
+espn-api>=0.39
+yahoo-oauth>=2.0
+yahoo-fantasy-api>=2.8

@@ -1,0 +1,20 @@
+{
+    "cookie": "cookie_name=cookie_value",
+    "draft_urls": {
+        "full_ppr": "",
+        "half_ppr": "",
+        "non_ppr": "",
+        "superflex": ""
+    },
+    "weekly": {
+        "base_url": "",
+        "expert_id": "",
+        "scoring": ""
+    },
+    "tier_urls": {
+        "QB": "",
+        "RB": "",
+        "WR": "",
+        "TE": ""
+    }
+}
