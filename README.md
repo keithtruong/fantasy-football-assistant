@@ -10,12 +10,13 @@ A personal assistant for managing fantasy football teams across multiple leagues
 
 ## Status
 
-Early setup. Scope and architecture are being defined — see [DECISIONS.md](./DECISIONS.md) for the running log of what's been decided and why.
+Design phase complete for the initial scope — architecture, data model approach, and UI/UX for all five app sections (Draft, In-season, Exposure, League settings, W-L tracking) are defined. See [CLAUDE.md](./CLAUDE.md) for the current-state spec and [DECISIONS.md](./DECISIONS.md) for the full history of how it got there. Implementation is starting now, beginning with the data model and the draft tool.
 
 ## Repo
 
 GitHub: https://github.com/keithtruong/fantasy-football-assistant
 
-## Decision Journal
+## Documentation
 
-Key decisions (scope, platform integrations, architecture, tooling choices) are recorded in [DECISIONS.md](./DECISIONS.md) as they're made, with context and rationale — both to keep the project coherent over time and to give portfolio reviewers insight into the thinking behind it.
+- [CLAUDE.md](./CLAUDE.md) — current architecture and design reference, written for whoever (or whatever) is building the code
+- [DECISIONS.md](./DECISIONS.md) — chronological log of every decision, with context and rationale, doubling as a work sample for portfolio reviewers

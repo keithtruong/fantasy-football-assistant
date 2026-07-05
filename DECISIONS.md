@@ -6,6 +6,63 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-04 — Win/loss tracking design
+
+**Context:** Keith laid out what he wants from the W-L tracker, based on the shape of the legacy W-L 2025.xlsx (13 years of history, per-year and all-years rollups).
+
+**Decisions:**
+
+- **Four year-scoped views, selected by a year picker (not a league picker — these span all leagues at once):**
+  1. Game-by-game results per league for the selected year (league, week, PF, PA, differential) — matches the legacy "20XX Results" sheet.
+  2. Weekly aggregate across all leagues combined: net games-above-even for that week, plus a running cumulative total through the season.
+  3. League summary for the year: one row per league with W/L/T, buy-in, max possible payout, actual payout, and finishing position — matches the legacy per-year sheet's columns.
+  4. Close games: wins and losses with a margin under 6 points, showing league, week, and margin. Fixed threshold (6 points), not a relative/percentage rule or an unthresholded sorted list — Keith had a specific number already in mind from how he'd used the legacy sheet.
+- **One all-years rollup, per league:** W/L/T, win percentage, years played, 1st/2nd/3rd-place finish counts, points for, points against. Points for/against were columns the legacy "All Years" sheet had but never actually filled in — this is a real gap the new tool closes, not just a carryover.
+- **W-L becomes a fifth peer in the app-level nav**, alongside Draft, In-season, Exposure, and League settings.
+
+**Games view correction:** initially built as one combined table (Week, League, Outcome, PF, PA, Diff all in one flat list). Keith corrected this — the legacy per-year sheet actually gives each league its own block, with weeks 1-17 as rows and a total row at the bottom, arranged side by side across the sheet. Rebuilt as one card per league, horizontally scrollable — the same pattern already used for the draft tool's Grid (team columns) and Rosters (team cards) tabs. Each week row shows PF and PA scores alongside outcome and differential, not just the differential.
+
+**Future automation note:** weekly game results (PF/PA/outcome) have always been filled in by hand. That doesn't have to stay true going forward — the platform connectors are already planned as read-only and already need matchup data as part of the shared data model, so current/future-season results could populate automatically the same way rosters and settings do. Historical years (2013 through last season) stay a one-time import from the legacy spreadsheet, since platforms don't expose that retroactively. Manual entry remains available as a fallback for anything the APIs don't cover cleanly. Not a commitment yet, just a noted direction.
+
+---
+
+## 2026-07-04 — App-level navigation shape
+
+**Context:** With Draft, In-season, and Exposure each designed as their own sections, Keith asked where league configuration (names, platforms, scoring, roster construction) fits.
+
+**Decision:** League settings get their own shared section too — formalizing the legacy "Settings" sheet's role as a single table that every other part of the app reads from, rather than each module keeping its own copy. It's a distinct section from the three functional views, but a low-frequency one (setup/edit leagues) rather than something checked regularly.
+
+**Resulting app-level nav:** Draft | In-season | Exposure | League settings (W-L tracking still to be designed and placed).
+
+---
+
+## 2026-07-04 — In-season tool design
+
+**Context:** Keith walked through his actual weekly routine: Tuesday night waiver prep (before ETR's weekly refresh, so more subjective), Wednesday night once ETR's rest-of-season and weekly rankings are both out (waiver targets + setting lineups), then Thursday/Sunday-morning/Monday re-checks before each slate locks. He also pointed to the legacy "Weekly Rank Eval" tab (Manager 2025.xlsm) as the reference for two of the views.
+
+**Decisions:**
+
+- **Two core views, mirroring the legacy sheet exactly:** Weekly (Rostered | Available) and Rest-of-season (Rostered | Available), both grouped by position, scoped to one league at a time via the shared league-selector pattern.
+- **Thursday/Sunday/Monday re-checks reuse the Wednesday lineup view as-is** — same screen, just reopened with whatever's refreshed since, rather than a separate "what changed" diff view.
+- **Swap-candidate judgment calls shown as plain numbers, not a computed threshold** — same approach as the draft tool's ADP lookahead: your starter's rank sits next to the closest bench alternatives at that position, and Keith makes the call rather than the tool deciding what counts as "close enough."
+- **Tuesday's pre-ETR step gets lightweight support, built around ETR's separate "Waiver Wire" suggestion content** (distinct from its numeric rankings tables — a written list of recommended pickups). The tool cross-references those suggested names against what's actually available (unrostered) in each of Keith's leagues, shown alongside his own worst-ranked players per position using the last available data (since that week's rankings refresh hasn't happened yet). This means the rankings-ingestion layer needs to handle more than tables — it also needs to parse an editorial suggestion list as its own content type.
+- **Automation stays hybrid, as already decided for the core architecture** — scheduled pulls for the routine Tuesday/Wednesday/Thursday/Sunday/Monday refreshes, with manual/on-demand refresh always available too.
+
+**Follow-up: "worst players" and "available" list behavior**
+
+- **Raw rank is sufficient for sorting "worst rostered players"** — no extra tie-breaking logic needed.
+- **Unranked players (injured/suspended for the week) still need to show up in the worst-players list**, not disappear just because that week's rankings omit them. They should be flagged with their status (injured/suspended/bye) rather than silently dropped — this means the in-season data model needs a player-status field per roster spot, most likely sourced from the platforms' own roster data (which typically carries injury designations) rather than from the rankings provider. Not yet verified which platforms expose this cleanly — flagged to check during connector build.
+- **The "Available" list is never gated by whether it beats your roster.** It always shows the best-ranked available options at a position, even in weeks where none of them would actually improve on your worst rostered player — useful for depth/bye-week visibility, not just upgrade-hunting.
+- **A visual indicator connects the two lists**: highlight when an available player's rank is better than one of your lowest-ranked rostered players at that position (an unranked/injured rostered player counts as automatically beaten). Surfaces real opportunities without hiding the baseline "who's out there" view.
+
+**Scope boundary: advisory only, no write-back to platforms.** The tool surfaces suggestions (waiver targets, lineup swaps) but Keith executes the actual add/drop or lineup change directly in ESPN/Yahoo/Sleeper himself. This means platform connectors only need read access (rosters, league settings, waiver priority, matchups) — no transactional/write API calls, which simplifies auth scope and removes any risk of the tool making a roster move on its own.
+
+**No separate lineup-setting screen needed.** The Weekly Ranks view (rostered players' weekly rank per position, with side-by-side comparisons against close alternatives) doubles as the lineup-setting tool — there's no additional "apply this lineup" interaction to design, since Keith sets the actual lineup in the platform itself. This closes out the in-season view design: Weekly and ROS Rostered-vs-Available cover waiver prep, waiver targeting, and lineup decisions all in one pair of views.
+
+**Weekly view needs DST and K; rest-of-season doesn't.** Keith streams both positions frequently (matchup-based weekly swaps), so they need the same Rostered-vs-Available treatment as QB/RB/WR/TE in the Weekly tab. ROS doesn't need this — DST/K aren't rest-of-season strategic assets the way skill positions are, so that view stays QB/RB/WR/TE only.
+
+---
+
 ## 2026-07-04 — Draft tool screen layout
 
 **Context:** Keith laid out the full set of information the draft experience needs to show — per-league rankings with tiers/colors/round-value tracking, position-run pace, the full team x round board, per-team position-filled status, an ADP lookahead for value/wait tradeoffs, projected starter strength by team, bye-week clustering, cross-league exposure, and a playoff strength-of-schedule tag. He asked for a layout recommendation based on screen real estate (has to work on a laptop) and how these pieces cross over with each other, rather than specifying the screen breakdown himself.
