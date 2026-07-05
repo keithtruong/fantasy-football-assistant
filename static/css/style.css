@@ -643,6 +643,13 @@ table.scoring-table td:last-child {
   font-size: 13.5px;
 }
 
+.app-error {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 4px 0;
+}
+
 .in-season-position {
   margin-bottom: 20px;
 }

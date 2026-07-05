@@ -47,19 +47,30 @@ async function renderActive() {
   tabContent.innerHTML = "";
   setVisibleRows(SECTION_ROWS[state.activeSection]);
 
-  if (state.activeSection === "league_settings") {
-    await renderLeagueSettings(tabContent, reloadLeagues);
-    return;
+  try {
+    if (state.activeSection === "league_settings") {
+      await renderLeagueSettings(tabContent, reloadLeagues);
+      return;
+    }
+
+    if (!state.leagueId) return;
+
+    if (state.activeSection === "in_season") {
+      await renderInSeasonView(tabContent, state, renderActive);
+      return;
+    }
+
+    await tabRenderers[state.activeTab](tabContent, state, renderActive);
+  } catch (err) {
+    // Any failed fetch (e.g. no team marked as yours yet) otherwise left the
+    // page silently blank — tabContent was already cleared above, and nothing
+    // catching the rejection meant no message ever reached the user.
+    tabContent.innerHTML = "";
+    const errorMsg = document.createElement("p");
+    errorMsg.className = "app-error";
+    errorMsg.textContent = err.message;
+    tabContent.appendChild(errorMsg);
   }
-
-  if (!state.leagueId) return;
-
-  if (state.activeSection === "in_season") {
-    await renderInSeasonView(tabContent, state, renderActive);
-    return;
-  }
-
-  await tabRenderers[state.activeTab](tabContent, state, renderActive);
 }
 
 async function reloadLeagues() {
