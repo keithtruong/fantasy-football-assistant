@@ -146,7 +146,7 @@ class TestLeagueSettingsApi(ApiTestCase):
 
     @patch("ffassistant.ingest.sleeper.sync_league")
     def test_create_league_syncs_and_sets_team_count(self, mock_sync):
-        def fake_sync(conn, league_id, sleeper_league_id):
+        def fake_sync(conn, league_id, sleeper_league_id, season=None, week=None):
             conn.execute(
                 "INSERT INTO teams (league_id, platform_team_id, team_name, draft_position) "
                 "VALUES (?, '1', 'New Team', 1)",
@@ -171,7 +171,7 @@ class TestLeagueSettingsApi(ApiTestCase):
         # Real incident: a slow/ambiguous UI response led to 5 submits for one
         # real league, creating 5 duplicate rows. Re-adding the same
         # platform + platform_league_id must resync in place instead.
-        def fake_sync(conn, league_id, sleeper_league_id):
+        def fake_sync(conn, league_id, sleeper_league_id, season=None, week=None):
             conn.execute("DELETE FROM teams WHERE league_id = ?", (league_id,))
             conn.execute(
                 "INSERT INTO teams (league_id, platform_team_id, team_name, draft_position) "

@@ -133,7 +133,7 @@ def _sync_from_platform(db, league_id, platform, platform_league_id, season):
     if platform == "sleeper":
         from ffassistant.ingest import sleeper as sleeper_ingest
 
-        sleeper_ingest.sync_league(db, league_id, str(platform_league_id))
+        sleeper_ingest.sync_league(db, league_id, str(platform_league_id), season=season)
     elif platform == "espn":
         from ffassistant.ingest import espn as espn_ingest
 

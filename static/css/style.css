@@ -615,3 +615,104 @@ table.scoring-table td:last-child {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ---- In-season ---- */
+
+#in-season-tab-bar {
+  margin-top: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+#in-season-controls {
+  margin-top: 10px;
+}
+
+#in-season-week-input {
+  width: 70px;
+  padding: 6px 8px;
+  font-size: 13.5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.in-season-prompt {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+}
+
+.in-season-position {
+  margin-bottom: 20px;
+}
+
+.in-season-position-heading {
+  margin-bottom: 8px;
+}
+
+.in-season-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.in-season-column {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.in-season-column h4 {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-muted);
+  margin: 0 0 8px;
+}
+
+.in-season-player-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13.5px;
+}
+
+.in-season-player-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.in-season-player-list li:last-child { border-bottom: none; }
+
+.in-season-empty {
+  color: var(--ink-muted);
+}
+
+.in-season-rank {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.status-badge {
+  margin-left: 8px;
+  background: var(--highlight);
+  color: var(--ink-strong);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.in-season-player-list li.beats-worst {
+  background: var(--filled);
+  margin: 0 -14px;
+  padding: 4px 14px;
+}
+
+@media (max-width: 700px) {
+  .in-season-columns { grid-template-columns: 1fr; }
+}

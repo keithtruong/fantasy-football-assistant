@@ -54,4 +54,8 @@ export const api = {
     request(`/api/leagues/${leagueId}/draft_picks/${pickId}`, { method: "DELETE" }),
   searchPlayers: (query, leagueId, season) =>
     request(`/api/players/search?q=${encodeURIComponent(query)}&league_id=${leagueId}&season=${season}`),
+  getInSeason: (leagueId, view, season, week) =>
+    request(
+      `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")
+    ),
 };

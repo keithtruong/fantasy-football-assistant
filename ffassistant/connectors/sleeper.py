@@ -89,6 +89,7 @@ def get_roster_players(player_ids: list[str], players_lookup: dict) -> list[dict
                 "full_name": full_name,
                 "position": _map_position(info.get("position")),
                 "nfl_team": info.get("team"),
+                "injury_status": info.get("injury_status"),
             }
         )
     return resolved

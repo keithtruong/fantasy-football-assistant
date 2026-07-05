@@ -74,6 +74,15 @@ class TestGetRosterPlayers(unittest.TestCase):
         self.assertEqual(resolved[1]["full_name"], "Kenneth Walker")  # built from first/last
         self.assertEqual(resolved[2]["position"], "DST")  # mapped from Sleeper's 'DEF'
 
+    def test_includes_injury_status(self):
+        players_lookup = {
+            "1234": {"full_name": "Banged Up Guy", "position": "RB", "team": "SEA", "injury_status": "Questionable"},
+            "5678": {"full_name": "Healthy Guy", "position": "WR", "team": "MIN", "injury_status": None},
+        }
+        resolved = sleeper.get_roster_players(["1234", "5678"], players_lookup)
+        self.assertEqual(resolved[0]["injury_status"], "Questionable")
+        self.assertIsNone(resolved[1]["injury_status"])
+
 
 class TestPlayersLookupCache(unittest.TestCase):
     @patch("ffassistant.connectors.sleeper.requests.get")

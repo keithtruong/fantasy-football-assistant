@@ -1,4 +1,4 @@
-"""Sync a Sleeper league's settings, teams, and current rosters into the local database.
+"""Sync a Sleeper league's settings, teams, current rosters, and injury status into the database.
 
 Expects `conn` to have `row_factory = sqlite3.Row` (see ffassistant.db.get_connection).
 """
@@ -9,11 +9,34 @@ from ffassistant.connectors import sleeper as sleeper_api
 from ffassistant.ingest._teams import remove_stale_teams
 from ffassistant.name_matching import match_player, resolve_override
 
+# Sleeper's own injuryStatus strings, mapped down to this project's player_status enum.
+_INJURY_STATUS_MAP = {
+    "Questionable": "questionable",
+    "Doubtful": "questionable",
+    "Out": "out",
+    "IR": "ir",
+    "PUP": "ir",
+    "Sus": "suspended",
+    "COV": "out",
+    "DNR": "out",
+    "NA": "out",
+}
 
-def sync_league(conn: sqlite3.Connection, league_id: int, sleeper_league_id: str) -> None:
-    """league_id is this project's internal leagues.league_id; sleeper_league_id is Sleeper's own ID."""
+
+def sync_league(
+    conn: sqlite3.Connection,
+    league_id: int,
+    sleeper_league_id: str,
+    season: int | None = None,
+    week: int | None = None,
+) -> None:
+    """league_id is this project's internal leagues.league_id; sleeper_league_id is Sleeper's own ID.
+
+    `week` is optional — pass it (with `season`) during an in-season sync to also
+    record each player's current injury status for that week.
+    """
     _sync_settings(conn, league_id, sleeper_league_id)
-    _sync_teams_and_rosters(conn, league_id, sleeper_league_id)
+    _sync_teams_and_rosters(conn, league_id, sleeper_league_id, season, week)
     conn.commit()
 
 
@@ -35,7 +58,13 @@ def _sync_settings(conn: sqlite3.Connection, league_id: int, sleeper_league_id: 
         )
 
 
-def _sync_teams_and_rosters(conn: sqlite3.Connection, league_id: int, sleeper_league_id: str) -> None:
+def _sync_teams_and_rosters(
+    conn: sqlite3.Connection,
+    league_id: int,
+    sleeper_league_id: str,
+    season: int | None,
+    week: int | None,
+) -> None:
     teams = sleeper_api.get_teams(sleeper_league_id)
     players_lookup = sleeper_api.get_players_lookup()
 
@@ -60,6 +89,15 @@ def _sync_teams_and_rosters(conn: sqlite3.Connection, league_id: int, sleeper_le
                 "ON CONFLICT (team_id, player_id) DO NOTHING",
                 (team_id, player_id),
             )
+            if week is not None:
+                status = _INJURY_STATUS_MAP.get(player_info["injury_status"], "healthy")
+                conn.execute(
+                    "INSERT INTO player_status (player_id, season, week, status, source) "
+                    "VALUES (?, ?, ?, ?, 'sleeper') "
+                    "ON CONFLICT (player_id, season, week) "
+                    "DO UPDATE SET status = excluded.status, source = excluded.source",
+                    (player_id, season, week, status),
+                )
 
 
 def _resolve_or_create_player(conn: sqlite3.Connection, player_info: dict) -> int:

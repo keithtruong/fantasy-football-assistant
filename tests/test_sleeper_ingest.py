@@ -28,9 +28,27 @@ FAKE_TEAMS = [
 ]
 
 FAKE_ROSTER_PLAYERS = {
-    "p1": {"source_player_id": "p1", "full_name": "Justin Jefferson", "position": "WR", "nfl_team": "MIN"},
-    "p2": {"source_player_id": "p2", "full_name": "Kenneth Walker", "position": "RB", "nfl_team": "SEA"},
-    "p3": {"source_player_id": "p3", "full_name": "Brand New Rookie", "position": "RB", "nfl_team": "NYJ"},
+    "p1": {
+        "source_player_id": "p1",
+        "full_name": "Justin Jefferson",
+        "position": "WR",
+        "nfl_team": "MIN",
+        "injury_status": None,
+    },
+    "p2": {
+        "source_player_id": "p2",
+        "full_name": "Kenneth Walker",
+        "position": "RB",
+        "nfl_team": "SEA",
+        "injury_status": "Questionable",
+    },
+    "p3": {
+        "source_player_id": "p3",
+        "full_name": "Brand New Rookie",
+        "position": "RB",
+        "nfl_team": "NYJ",
+        "injury_status": "Out",
+    },
 }
 
 
@@ -123,6 +141,56 @@ class TestSyncLeague(unittest.TestCase):
 
         teams = self.conn.execute("SELECT platform_team_id FROM teams").fetchall()
         self.assertEqual([t["platform_team_id"] for t in teams], ["1"])
+
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_sync_with_week_records_injury_status(self, *_mocks):
+        sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999", season=2026, week=5)
+
+        statuses = {
+            r["full_name"]: r["status"]
+            for r in self.conn.execute(
+                """
+                SELECT p.full_name, ps.status FROM player_status ps
+                JOIN players p ON p.player_id = ps.player_id
+                """
+            )
+        }
+        self.assertEqual(statuses["Justin Jefferson"], "healthy")  # None -> healthy fallback
+        self.assertEqual(statuses["Kenneth Walker"], "questionable")
+        self.assertEqual(statuses["Brand New Rookie"], "out")
+
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_sync_without_week_skips_player_status(self, *_mocks):
+        sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        status_count = self.conn.execute("SELECT COUNT(*) AS c FROM player_status").fetchone()["c"]
+        self.assertEqual(status_count, 0)
+
+
+class TestInjuryStatusMap(unittest.TestCase):
+    def test_maps_all_known_sleeper_statuses(self):
+        expected = {
+            "Questionable": "questionable",
+            "Doubtful": "questionable",
+            "Out": "out",
+            "IR": "ir",
+            "PUP": "ir",
+            "Sus": "suspended",
+            "COV": "out",
+            "DNR": "out",
+            "NA": "out",
+        }
+        for sleeper_status, mapped in expected.items():
+            self.assertEqual(sleeper_ingest._INJURY_STATUS_MAP[sleeper_status], mapped)
+
+    def test_unmapped_status_falls_back_to_healthy(self):
+        self.assertEqual(sleeper_ingest._INJURY_STATUS_MAP.get("SomethingNew", "healthy"), "healthy")
 
 
 if __name__ == "__main__":
