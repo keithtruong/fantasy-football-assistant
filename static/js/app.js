@@ -4,6 +4,7 @@ import { renderGridTab } from "./grid.js";
 import { renderRostersTab } from "./rosters.js";
 import { renderLeagueSettings } from "./leagueSettings.js";
 import { renderInSeasonView } from "./inSeason.js";
+import { renderExposureView } from "./exposure.js";
 
 const state = {
   leagueId: null,
@@ -33,6 +34,7 @@ const weekInput = document.getElementById("in-season-week-input");
 const SECTION_ROWS = {
   draft_tool: [leagueSelectRow, draftToolControls, tabBar],
   in_season: [leagueSelectRow, inSeasonControls, inSeasonTabBar],
+  exposure: [],
   league_settings: [],
 };
 
@@ -50,6 +52,11 @@ async function renderActive() {
   try {
     if (state.activeSection === "league_settings") {
       await renderLeagueSettings(tabContent, reloadLeagues);
+      return;
+    }
+
+    if (state.activeSection === "exposure") {
+      await renderExposureView(tabContent);
       return;
     }
 

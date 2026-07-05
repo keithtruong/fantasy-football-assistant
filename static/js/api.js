@@ -66,4 +66,5 @@ export const api = {
     request(
       `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")
     ),
+  getExposure: () => request("/api/exposure"),
 };

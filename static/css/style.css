@@ -266,6 +266,7 @@ tr.round-break td {
 
 .tag-chip.tag-positive { background: var(--filled); color: var(--steal); }
 .tag-chip.tag-caution { background: var(--highlight); color: var(--accent); }
+.tag-chip.tag-neutral { background: var(--line); color: var(--ink-muted); }
 
 /* Shared look for the rail's small reference tables (My Roster, ADP Lookahead) */
 table.borderless-table {
@@ -315,12 +316,19 @@ tr.adp-gap-caution td:first-child { border-left: 3px solid var(--accent); }
   font-size: 13px;
 }
 
-.roster-position-group {
-  margin-top: 10px;
-  font-size: 13px;
+.my-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.roster-position-group:first-of-type { margin-top: 10px; }
+.roster-position-group {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
 
 table.roster-slot-table { margin-top: 4px; }
 
@@ -838,4 +846,126 @@ table.scoring-table td:last-child {
 
 @media (max-width: 700px) {
   .in-season-columns { grid-template-columns: 1fr; }
+}
+
+/* ---- Exposure ---- */
+
+.exposure-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 900px;
+}
+
+.exposure-section h3 {
+  font-size: 14px;
+  margin: 0 0 10px;
+  color: var(--ink-strong);
+}
+
+.exposure-position-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.exposure-position-group table.exposure-table { margin-top: 6px; }
+
+.exposure-leagues-cell {
+  color: var(--ink-muted);
+  font-size: 12.5px;
+}
+
+.exposure-empty {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+}
+
+.exposure-nfl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.exposure-nfl-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.exposure-nfl-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.exposure-nfl-card-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-strong);
+}
+
+.exposure-bye-chip {
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.exposure-nfl-summary {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 4px 0 8px;
+}
+
+.exposure-nfl-players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.exposure-nfl-players li {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.exposure-player-league-count {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+
+.exposure-zero-wrap { margin-top: 18px; }
+
+.exposure-zero-wrap h4 {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-muted);
+  margin: 0 0 8px;
+}
+
+.exposure-zero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exposure-zero-chip {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--ink-muted);
 }

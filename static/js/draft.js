@@ -26,11 +26,12 @@ function computePickSlot(pickNumber, teamCount) {
 }
 
 export async function renderDraftTab(container, state, refresh) {
-  const [settings, teams, rankings, draftData] = await Promise.all([
+  const [settings, teams, rankings, draftData, exposure] = await Promise.all([
     api.getSettings(state.leagueId),
     api.getTeams(state.leagueId),
     api.getRankings(state.leagueId, state.scoringFormat, state.season),
     api.getDraftPicks(state.leagueId, state.season),
+    api.getExposure(),
   ]);
 
   const teamCount = teams.length;
@@ -43,6 +44,15 @@ export async function renderDraftTab(container, state, refresh) {
     settings.roster_slots.map((s) => [s.slot_name, s.slot_count])
   );
 
+  // Cross-league exposure — a tiebreaker signal, not a rank-derived one, so it's
+  // flattened from the position-grouped /api/exposure response into a plain lookup.
+  const exposureByPlayerId = new Map();
+  for (const players of Object.values(exposure.players_by_position)) {
+    for (const player of players) {
+      exposureByPlayerId.set(player.player_id, player);
+    }
+  }
+
   container.appendChild(
     buildLayout({
       teams,
@@ -50,6 +60,7 @@ export async function renderDraftTab(container, state, refresh) {
       teamCount,
       available,
       rankingsByPlayerId,
+      exposureByPlayerId,
       draftData,
       rosterSlotCounts,
       state,
@@ -135,10 +146,10 @@ function buildQuickPicks(available, state, refresh) {
   return wrap;
 }
 
-/** Reach/Wait, Sleeper/Shy-away, Hard/Easy SOS, Bye Risk — computed per row,
- * shown as compact tag chips rather than dedicated always-on columns, since
- * most players won't trip most of these. */
-function computeTags(player, { myTeam, rankingsByPlayerId }) {
+/** Reach/Wait, Sleeper/Shy-away, Hard/Easy SOS, Bye Risk, exposure — computed
+ * per row, shown as compact tag chips rather than dedicated always-on columns,
+ * since most players won't trip most of these. */
+function computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId }) {
   const tags = [];
 
   if (player.rank != null && player.adp != null) {
@@ -165,10 +176,18 @@ function computeTags(player, { myTeam, rankingsByPlayerId }) {
     if (samePositionByeMatches >= BYE_RISK_STACK_COUNT) tags.push({ label: "Bye Risk", kind: "caution" });
   }
 
+  // Cross-league exposure — neither good nor bad on its own (a stud owned
+  // elsewhere is still a stud), just a fact to weigh as a tiebreaker.
+  const exposure = exposureByPlayerId.get(player.player_id);
+  if (exposure) {
+    const label = `${exposure.league_count} League${exposure.league_count === 1 ? "" : "s"}`;
+    tags.push({ label, kind: "neutral" });
+  }
+
   return tags;
 }
 
-function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, refresh }) {
+function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, exposureByPlayerId, refresh }) {
   const table = el("table", "rank-list");
   const thead = document.createElement("thead");
   thead.innerHTML =
@@ -221,7 +240,7 @@ function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, refre
 
     const tagsCell = document.createElement("td");
     const tagsInner = el("div", "tags-cell-inner");
-    for (const tag of computeTags(player, { myTeam, rankingsByPlayerId })) {
+    for (const tag of computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId })) {
       const chip = document.createElement("span");
       chip.className = `tag-chip tag-${tag.kind}`;
       chip.textContent = tag.label;
