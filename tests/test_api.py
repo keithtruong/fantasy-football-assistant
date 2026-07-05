@@ -284,6 +284,13 @@ class TestRankingsApi(ApiTestCase):
         names = [r["full_name"] for r in resp.get_json()]
         self.assertIn("Saquon Barkley", names)
 
+    def test_includes_manual_tag_when_set(self):
+        self.client.put("/api/players/2/manual_tag", json={"tag": "shy_away"})
+        resp = self.client.get("/api/leagues/1/rankings?scoring_format=full_ppr&season=2026")
+        data = {r["full_name"]: r["manual_tag"] for r in resp.get_json()}
+        self.assertEqual(data["Saquon Barkley"], "shy_away")
+        self.assertIsNone(data["Josh Allen"])
+
 
 class TestDraftPicksApi(ApiTestCase):
     def test_pick_order_and_on_the_clock(self):
@@ -325,6 +332,26 @@ class TestDraftPicksApi(ApiTestCase):
         resp = self.client.delete(f"/api/leagues/1/draft_picks/{first['draft_pick_id']}")
         self.assertEqual(resp.status_code, 409)
 
+    def test_clear_all_picks_resets_the_clock(self):
+        self.client.post("/api/leagues/1/draft_picks", json={"player_id": 2, "season": 2026})
+        self.client.post("/api/leagues/1/draft_picks", json={"player_id": 3, "season": 2026})
+
+        resp = self.client.delete("/api/leagues/1/draft_picks?season=2026")
+        self.assertEqual(resp.status_code, 204)
+
+        data = self.client.get("/api/leagues/1/draft_picks?season=2026").get_json()
+        self.assertEqual(data["picks"], [])
+        self.assertEqual(data["on_the_clock"]["pick_number"], 1)
+
+    def test_clear_all_picks_scoped_to_season(self):
+        self.client.post("/api/leagues/1/draft_picks", json={"player_id": 2, "season": 2025})
+        self.client.post("/api/leagues/1/draft_picks", json={"player_id": 3, "season": 2026})
+
+        self.client.delete("/api/leagues/1/draft_picks?season=2026")
+
+        remaining = self.client.get("/api/leagues/1/draft_picks?season=2025").get_json()["picks"]
+        self.assertEqual(len(remaining), 1)
+
 
 class TestPlayersApi(ApiTestCase):
     def test_search_requires_min_length(self):
@@ -340,6 +367,31 @@ class TestPlayersApi(ApiTestCase):
         self.client.post("/api/leagues/1/draft_picks", json={"player_id": 2, "season": 2026})
         resp = self.client.get("/api/players/search?q=barkley&league_id=1&season=2026")
         self.assertEqual(resp.get_json(), [])
+
+
+class TestManualTagApi(ApiTestCase):
+    def test_set_and_clear_manual_tag(self):
+        resp = self.client.put("/api/players/2/manual_tag", json={"tag": "sleeper"})
+        self.assertEqual(resp.status_code, 204)
+
+        rankings = self.client.get("/api/leagues/1/rankings?scoring_format=full_ppr&season=2026").get_json()
+        tag = next(r["manual_tag"] for r in rankings if r["player_id"] == 2)
+        self.assertEqual(tag, "sleeper")
+
+        # Re-setting overwrites rather than duplicating (player_id is the primary key).
+        self.client.put("/api/players/2/manual_tag", json={"tag": "shy_away"})
+        rankings = self.client.get("/api/leagues/1/rankings?scoring_format=full_ppr&season=2026").get_json()
+        tag = next(r["manual_tag"] for r in rankings if r["player_id"] == 2)
+        self.assertEqual(tag, "shy_away")
+
+        self.client.put("/api/players/2/manual_tag", json={"tag": None})
+        rankings = self.client.get("/api/leagues/1/rankings?scoring_format=full_ppr&season=2026").get_json()
+        tag = next(r["manual_tag"] for r in rankings if r["player_id"] == 2)
+        self.assertIsNone(tag)
+
+    def test_rejects_invalid_tag(self):
+        resp = self.client.put("/api/players/2/manual_tag", json={"tag": "bogus"})
+        self.assertEqual(resp.status_code, 400)
 
 
 if __name__ == "__main__":

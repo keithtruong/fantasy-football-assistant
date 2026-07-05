@@ -52,8 +52,16 @@ export const api = {
     }),
   undoPick: (leagueId, pickId) =>
     request(`/api/leagues/${leagueId}/draft_picks/${pickId}`, { method: "DELETE" }),
+  clearPicks: (leagueId, season) =>
+    request(`/api/leagues/${leagueId}/draft_picks?season=${season}`, { method: "DELETE" }),
   searchPlayers: (query, leagueId, season) =>
     request(`/api/players/search?q=${encodeURIComponent(query)}&league_id=${leagueId}&season=${season}`),
+  setManualTag: (playerId, tag) =>
+    request(`/api/players/${playerId}/manual_tag`, {
+      method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ tag }),
+    }),
   getInSeason: (leagueId, view, season, week) =>
     request(
       `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")

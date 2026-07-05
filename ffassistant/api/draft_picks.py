@@ -68,6 +68,18 @@ def edit_pick(pick_id, league_id):
     return jsonify({"draft_pick_id": pick_id, "player_id": player_id})
 
 
+@draft_picks_bp.delete("")
+def clear_picks(league_id):
+    """Wipes every pick for this league/season — a mock-draft reset, not an undo.
+    Confirmation lives client-side; this endpoint does the deletion unconditionally.
+    """
+    db = get_db()
+    season = request.args.get("season", type=int) or datetime.date.today().year
+    db.execute("DELETE FROM draft_picks WHERE league_id = ? AND season = ?", (league_id, season))
+    db.commit()
+    return "", 204
+
+
 @draft_picks_bp.delete("/<int:pick_id>")
 def undo_pick(pick_id, league_id):
     """Only the most recent pick can be undone — avoids renumbering every later pick."""

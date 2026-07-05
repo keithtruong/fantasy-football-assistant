@@ -127,6 +127,15 @@ CREATE TABLE IF NOT EXISTS player_status (
     PRIMARY KEY (player_id, season, week)
 );
 
+-- Keith's own manual "target"/"avoid" call on a player, independent of rank —
+-- e.g. "shy_away" for injury/contract/scheme concerns rank alone wouldn't
+-- capture. Global per player (not per league/season): a personal read on the
+-- player, not a per-draft computation like the rank-vs-ADP Reach/Wait tag.
+CREATE TABLE IF NOT EXISTS player_manual_tags (
+    player_id   INTEGER PRIMARY KEY REFERENCES players (player_id) ON DELETE CASCADE,
+    tag         TEXT NOT NULL CHECK (tag IN ('sleeper', 'shy_away'))
+);
+
 -- ============================================================
 -- NFL team reference data (static, one-time-per-season imports)
 -- ============================================================

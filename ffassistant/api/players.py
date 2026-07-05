@@ -1,10 +1,12 @@
 import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, abort, jsonify, request
 
 from ffassistant.api import get_db
 
 players_bp = Blueprint("players", __name__, url_prefix="/api/players")
+
+MANUAL_TAGS = ("sleeper", "shy_away")
 
 
 @players_bp.get("/search")
@@ -36,3 +38,26 @@ def search_players():
     ).fetchall()
 
     return jsonify([dict(r) for r in rows])
+
+
+@players_bp.put("/<int:player_id>/manual_tag")
+def set_manual_tag(player_id):
+    """Keith's personal target/avoid call on a player — set `tag` to null to clear."""
+    db = get_db()
+    payload = request.get_json(silent=True) or {}
+    tag = payload.get("tag")
+
+    if tag is None:
+        db.execute("DELETE FROM player_manual_tags WHERE player_id = ?", (player_id,))
+    else:
+        if tag not in MANUAL_TAGS:
+            abort(400, description=f"tag must be one of {MANUAL_TAGS} or null")
+        db.execute(
+            """
+            INSERT INTO player_manual_tags (player_id, tag) VALUES (?, ?)
+            ON CONFLICT (player_id) DO UPDATE SET tag = excluded.tag
+            """,
+            (player_id, tag),
+        )
+    db.commit()
+    return "", 204

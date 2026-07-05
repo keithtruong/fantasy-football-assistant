@@ -4,6 +4,18 @@ import { buildPlayerSearch } from "./playerSearch.js";
 
 const CORE_POSITIONS = ["QB", "RB", "WR", "TE", "DST", "K"];
 
+// Notable-gap thresholds for the rank-list Tags column. Tuned to flag real
+// signal, not every minor disagreement between sources.
+const REACH_WAIT_ADP_GAP = 12; // rank this many spots off ADP (~a round) -> "Wait"/"Reach"
+const SOS_NOTABLE_RANK = 8; // top/bottom 8 of 32 teams -> "Hard SOS" / "Easy SOS"
+const BYE_RISK_STACK_COUNT = 2; // 2+ same-position rostered players sharing a bye
+
+function nextManualTag(current) {
+  if (current === "sleeper") return "shy_away";
+  if (current === "shy_away") return null;
+  return "sleeper";
+}
+
 // Mirrors ffassistant/draft_logic.py's compute_pick_slot exactly — small enough
 // that duplicating it client-side beats round-tripping to the server for it.
 function computePickSlot(pickNumber, teamCount) {
@@ -62,7 +74,7 @@ function buildMain(ctx) {
   return main;
 }
 
-function buildPickEntry({ teams, draftData, state, refresh }) {
+function buildPickEntry({ teams, draftData, available, state, refresh }) {
   const box = el("div", "pick-entry");
   const clock = draftData.on_the_clock;
 
@@ -81,6 +93,8 @@ function buildPickEntry({ teams, draftData, state, refresh }) {
   });
   box.appendChild(searchRow);
 
+  box.appendChild(buildQuickPicks(available, state, refresh));
+
   if (draftData.picks.length > 0) {
     const undoBtn = document.createElement("button");
     undoBtn.className = "undo-button";
@@ -96,28 +110,81 @@ function buildPickEntry({ teams, draftData, state, refresh }) {
   return box;
 }
 
-function buildRankList({ available, teamCount, draftData }) {
+/** One-click drafting of the top 5 available (by rank) — saves the search-type-click
+ * round trip when the pick is obvious. */
+function buildQuickPicks(available, state, refresh) {
+  const wrap = el("div", "quick-picks");
+
+  const label = document.createElement("span");
+  label.className = "quick-picks-label";
+  label.textContent = "Quick pick:";
+  wrap.appendChild(label);
+
+  for (const player of available.slice(0, 5)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "quick-pick-button";
+    btn.textContent = `${player.full_name} (${player.position || "?"})`;
+    btn.addEventListener("click", async () => {
+      await api.recordPick(state.leagueId, player.player_id, state.season);
+      refresh();
+    });
+    wrap.appendChild(btn);
+  }
+
+  return wrap;
+}
+
+/** Reach/Wait, Sleeper/Shy-away, Hard/Easy SOS, Bye Risk — computed per row,
+ * shown as compact tag chips rather than dedicated always-on columns, since
+ * most players won't trip most of these. */
+function computeTags(player, { myTeam, rankingsByPlayerId }) {
+  const tags = [];
+
+  if (player.rank != null && player.adp != null) {
+    const gap = player.adp - player.rank; // positive -> market has them later than we do
+    if (gap >= REACH_WAIT_ADP_GAP) tags.push({ label: "Wait", kind: "positive" });
+    else if (gap <= -REACH_WAIT_ADP_GAP) tags.push({ label: "Reach", kind: "caution" });
+  }
+
+  // Manual, not computed: Keith's own target/avoid call on this player,
+  // independent of rank (e.g. injury/contract/scheme concerns rank can't see).
+  if (player.manual_tag === "sleeper") tags.push({ label: "Sleeper", kind: "positive" });
+  else if (player.manual_tag === "shy_away") tags.push({ label: "Shy-away", kind: "caution" });
+
+  if (player.sos_rank != null) {
+    if (player.sos_rank <= SOS_NOTABLE_RANK) tags.push({ label: "Hard SOS", kind: "caution" });
+    else if (player.sos_rank > 32 - SOS_NOTABLE_RANK) tags.push({ label: "Easy SOS", kind: "positive" });
+  }
+
+  if (player.bye_week != null && myTeam) {
+    const samePositionByeMatches = myTeam.roster
+      .filter((p) => p.position === player.position)
+      .map((p) => rankingsByPlayerId.get(p.player_id)?.bye_week)
+      .filter((bye) => bye === player.bye_week).length;
+    if (samePositionByeMatches >= BYE_RISK_STACK_COUNT) tags.push({ label: "Bye Risk", kind: "caution" });
+  }
+
+  return tags;
+}
+
+function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, refresh }) {
   const table = el("table", "rank-list");
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th>Rank</th><th>Player</th><th>Pos</th><th>Rd</th><th>SOS</th></tr>";
+  thead.innerHTML =
+    "<tr><th>Rank</th><th>Player Name</th><th>Position</th><th>Tier</th><th>Team</th><th>ADP</th><th>Tags</th></tr>";
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
-  let lastTier = undefined;
 
   for (const player of available) {
-    if (player.tier != null && player.tier !== lastTier) {
-      const tierRow = document.createElement("tr");
-      tierRow.className = "tier-divider";
-      const td = document.createElement("td");
-      td.colSpan = 5;
-      td.textContent = `Tier ${player.tier}`;
-      tierRow.appendChild(td);
-      tbody.appendChild(tierRow);
-      lastTier = player.tier;
-    }
-
     const row = document.createElement("tr");
+    // Round-breakpoint line: rank-based (not position-in-list), matching the
+    // legacy spreadsheet's conditional formatting — e.g. a 12-team league gets
+    // a line under rank 12, 24, 36... regardless of who's already been drafted.
+    if (player.rank != null && player.rank % teamCount === 0) {
+      row.classList.add("round-break");
+    }
 
     const rankCell = document.createElement("td");
     rankCell.textContent = player.rank;
@@ -125,6 +192,12 @@ function buildRankList({ available, teamCount, draftData }) {
 
     const nameCell = document.createElement("td");
     nameCell.textContent = player.full_name;
+    nameCell.className = "player-name-cell";
+    nameCell.title = "Click to cycle your target/avoid call: none → Sleeper → Shy-away";
+    nameCell.addEventListener("click", async () => {
+      await api.setManualTag(player.player_id, nextManualTag(player.manual_tag));
+      refresh();
+    });
     row.appendChild(nameCell);
 
     const posCell = document.createElement("td");
@@ -134,15 +207,28 @@ function buildRankList({ available, teamCount, draftData }) {
     posCell.appendChild(posChip);
     row.appendChild(posCell);
 
-    const roundCell = document.createElement("td");
-    const roundValue = Math.ceil(player.rank / teamCount);
-    roundCell.textContent = `Rd ${roundValue}`;
-    if (roundValue < draftData.on_the_clock.round) roundCell.className = "round-value-steal";
-    row.appendChild(roundCell);
+    const tierCell = document.createElement("td");
+    tierCell.textContent = player.tier != null ? player.tier : "—";
+    row.appendChild(tierCell);
 
-    const sosCell = document.createElement("td");
-    sosCell.textContent = player.sos_rank != null ? `#${player.sos_rank}` : "";
-    row.appendChild(sosCell);
+    const teamCell = document.createElement("td");
+    teamCell.textContent = player.nfl_team || "—";
+    row.appendChild(teamCell);
+
+    const adpCell = document.createElement("td");
+    adpCell.textContent = player.adp != null ? player.adp.toFixed(1) : "—";
+    row.appendChild(adpCell);
+
+    const tagsCell = document.createElement("td");
+    const tagsInner = el("div", "tags-cell-inner");
+    for (const tag of computeTags(player, { myTeam, rankingsByPlayerId })) {
+      const chip = document.createElement("span");
+      chip.className = `tag-chip tag-${tag.kind}`;
+      chip.textContent = tag.label;
+      tagsInner.appendChild(chip);
+    }
+    tagsCell.appendChild(tagsInner);
+    row.appendChild(tagsCell);
 
     tbody.appendChild(row);
   }
@@ -150,12 +236,12 @@ function buildRankList({ available, teamCount, draftData }) {
   return table;
 }
 
-// ---- Rail: my roster, team-by-position matrix, ADP lookahead ----
+// ---- Rail: my roster, positions filled, ADP lookahead ----
 
 function buildRail(ctx) {
   const rail = el("div", "draft-rail");
   rail.appendChild(buildCollapsible("My Roster", buildMyRoster(ctx)));
-  rail.appendChild(buildCollapsible("Team Needs — safe to wait?", buildTeamMatrix(ctx)));
+  rail.appendChild(buildCollapsible("Positions Filled", buildTeamMatrix(ctx)));
   rail.appendChild(buildCollapsible("ADP Lookahead", buildAdpLookahead(ctx)));
   return rail;
 }
@@ -184,26 +270,55 @@ function buildCollapsible(title, contentEl) {
   return section;
 }
 
-function buildMyRoster({ myTeam, rankingsByPlayerId }) {
-  const list = el("div", "my-roster");
+function buildMyRoster({ myTeam, rankingsByPlayerId, rosterSlotCounts }) {
+  const wrap = el("div", "my-roster");
   for (const position of CORE_POSITIONS) {
-    const players = myTeam.roster.filter((p) => p.position === position);
-    if (players.length === 0) continue;
+    const players = myTeam.roster
+      .filter((p) => p.position === position)
+      .sort((a, b) => (a.pick_number || 0) - (b.pick_number || 0));
+    const starterCount = rosterSlotCounts[position] || 0;
+    if (starterCount === 0 && players.length === 0) continue;
+
     const group = el("div", "roster-position-group");
     const label = el("span", "position-chip");
     label.textContent = position;
     label.style.backgroundColor = positionColor(position);
     group.appendChild(label);
-    for (const player of players) {
-      const ranking = rankingsByPlayerId.get(player.player_id);
-      const byeText = ranking && ranking.bye_week ? ` (bye ${ranking.bye_week})` : "";
-      const line = document.createElement("div");
-      line.textContent = `${player.full_name}${byeText}`;
-      group.appendChild(line);
+
+    const table = el("table", "roster-slot-table borderless-table");
+    const tbody = document.createElement("tbody");
+    for (let i = 0; i < starterCount; i++) {
+      tbody.appendChild(buildRosterSlotRow(players[i], rankingsByPlayerId, false));
     }
-    list.appendChild(group);
+    for (let i = starterCount; i < players.length; i++) {
+      tbody.appendChild(buildRosterSlotRow(players[i], rankingsByPlayerId, true));
+    }
+    table.appendChild(tbody);
+    group.appendChild(table);
+    wrap.appendChild(group);
   }
-  return list;
+  return wrap;
+}
+
+function buildRosterSlotRow(player, rankingsByPlayerId, isBench) {
+  const row = document.createElement("tr");
+  row.className = isBench ? "roster-player-bench" : "roster-player-starter";
+
+  const nameCell = document.createElement("td");
+  const byeCell = document.createElement("td");
+  byeCell.className = "roster-bye-col";
+
+  if (!player) {
+    nameCell.textContent = "—";
+    row.classList.add("roster-slot-empty");
+  } else {
+    nameCell.textContent = player.full_name;
+    const bye = rankingsByPlayerId.get(player.player_id)?.bye_week;
+    byeCell.textContent = bye != null ? bye : "";
+  }
+  row.appendChild(nameCell);
+  row.appendChild(byeCell);
+  return row;
 }
 
 function buildTeamMatrix({ teams, rosterSlotCounts, myTeam, teamCount, draftData }) {
@@ -244,17 +359,41 @@ function buildTeamMatrix({ teams, rosterSlotCounts, myTeam, teamCount, draftData
 }
 
 function buildAdpLookahead({ available }) {
-  const list = el("ol", "adp-lookahead");
+  const table = el("table", "adp-lookahead-table borderless-table");
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Player</th><th>Pos</th><th>ADP</th><th>Your Rank</th></tr>";
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
   const byAdp = available
     .filter((p) => p.adp != null)
     .sort((a, b) => a.adp - b.adp)
     .slice(0, 15);
+
   for (const player of byAdp) {
-    const li = document.createElement("li");
-    li.textContent = `${player.full_name} (${player.position}) — ADP ${player.adp.toFixed(1)}, your rank ${player.rank}`;
-    list.appendChild(li);
+    const row = document.createElement("tr");
+    // Same signal as the rank list's Wait/Reach tags: your rank much better
+    // than ADP -> market may let them slip past ADP, safe-to-wait evidence.
+    // Your rank much worse than ADP -> don't count on them lasting.
+    if (player.rank != null) {
+      const gap = player.adp - player.rank;
+      if (gap >= REACH_WAIT_ADP_GAP) row.classList.add("adp-gap-positive");
+      else if (gap <= -REACH_WAIT_ADP_GAP) row.classList.add("adp-gap-caution");
+    }
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = player.full_name;
+    const posCell = document.createElement("td");
+    posCell.textContent = player.position;
+    const adpCell = document.createElement("td");
+    adpCell.textContent = player.adp.toFixed(1);
+    const rankCell = document.createElement("td");
+    rankCell.textContent = player.rank;
+    row.append(nameCell, posCell, adpCell, rankCell);
+    tbody.appendChild(row);
   }
-  return list;
+  table.appendChild(tbody);
+  return table;
 }
 
 function el(tag, className) {

@@ -23,8 +23,31 @@ export async function renderGridTab(container, state, refresh) {
     settings.roster_slots.map((s) => [s.slot_name, s.slot_count])
   );
 
+  container.appendChild(buildToolbar(draftData.picks.length, state, refresh));
   container.appendChild(buildBoard(teamsByDraftPosition, totalRounds, pickByRoundAndTeam, state, refresh));
   container.appendChild(buildPositionSummary(teamsByDraftPosition, rosterSlotCounts));
+}
+
+function buildToolbar(pickCount, state, refresh) {
+  const bar = document.createElement("div");
+  bar.className = "grid-toolbar";
+
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "clear-all-button";
+  clearBtn.textContent = "Clear all picks";
+  clearBtn.disabled = pickCount === 0;
+  clearBtn.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      `Clear all ${pickCount} pick${pickCount === 1 ? "" : "s"} for this league/season? This can't be undone.`
+    );
+    if (!confirmed) return;
+    await api.clearPicks(state.leagueId, state.season);
+    refresh();
+  });
+  bar.appendChild(clearBtn);
+
+  return bar;
 }
 
 function buildBoard(teams, totalRounds, pickByRoundAndTeam, state, refresh) {
