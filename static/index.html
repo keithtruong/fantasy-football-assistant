@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FF Assistant — Draft</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <header id="app-header">
+    <div class="header-row">
+      <h1>FF Assistant</h1>
+      <nav id="section-nav">
+        <button class="section-button active" data-section="draft_tool">Draft Tool</button>
+        <button class="section-button" data-section="league_settings">League Settings</button>
+      </nav>
+    </div>
+    <div id="draft-tool-controls" class="header-row">
+      <select id="league-select"></select>
+      <select id="scoring-format-select">
+        <option value="full_ppr">Full PPR</option>
+        <option value="half_ppr">Half PPR</option>
+        <option value="non_ppr">Non-PPR</option>
+        <option value="superflex">Superflex</option>
+      </select>
+    </div>
+    <nav id="tab-bar">
+      <button class="tab-button active" data-tab="draft">Draft</button>
+      <button class="tab-button" data-tab="grid">Grid</button>
+      <button class="tab-button" data-tab="rosters">Rosters</button>
+    </nav>
+  </header>
+
+  <main id="tab-content"></main>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
