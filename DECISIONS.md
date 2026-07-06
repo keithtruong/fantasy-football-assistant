@@ -6,6 +6,62 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-05 — Win/loss tracking build
+
+**Context:** Building the W-L tracker (design locked in 2026-07-04) against the
+real legacy spreadsheet surfaced a schema problem the design phase hadn't
+caught, plus a few real-data quirks the import had to handle.
+
+**Decision: decouple W-L history from the live `leagues`/`teams` tables.**
+Keith plans to re-import live leagues fresh each season (Yahoo's platform
+league IDs change year over year) and doesn't want stale leagues cluttering
+Draft/In-season's selector. The original schema had `matchups`/`league_seasons`
+cascading off `leagues.league_id` — deleting a stale live league to keep that
+selector clean would have destroyed years of W-L history with it. Fixed by
+adding a `league_history` table: a stable identity for a real-world league
+across seasons, created once and never touched by the live-league churn.
+`league_seasons`/`matchups` now key off `league_history_id` instead. Draft/
+In-season/Exposure are unaffected — they keep reading the live `leagues`/
+`teams` tables exactly as before; only W-L reads from `league_history`. Same
+idea as the player-identity/alias split, applied to leagues.
+
+**`matchups.team_id`/`opponent_team_id` dropped, not retargeted.** The legacy
+data never tracked opponent identity, and there's only ever one row per
+league-history per week (always "my" result) — `team_id` was redundant once
+`league_history_id` existed. Both tables were still empty in the real DB at
+the time, so this was a clean redefinition, not a migration.
+
+**Real-data quirks the import had to handle, found by running it against the
+actual file rather than guessing at the shape:**
+- A handful of rows have real scores but a blank Outcome cell (manual-entry
+  gaps in the original sheet) — outcome is now derived from points_for vs.
+  points_against rather than trusting a blank cell.
+- Rows with no scores at all (`differential = 0`, everything else blank) are
+  weeks that simply hadn't been played/entered yet as of the sheet's last
+  save — skipped entirely rather than imported as fake 0-0 ties.
+- The "Guillotine" league (a survivor/elimination format) records a weekly
+  rank in the Outcome column instead of a real W/L, with points_for always
+  equal to points_against (no true opponent). Its head-to-head schema doesn't
+  apply to that format at all, so those rows are skipped — Guillotine still
+  gets its season-level record (which is genuinely 0-0-0, since no head-to-
+  head result was ever recorded for it), just no weekly matchup rows.
+- Added a nullable `playoff_round` column (`semifinal`/`final`/`third_place`)
+  to `matchups` — the sheet had this as a free per-week marker CLAUDE.md's
+  original spec didn't call for, but it cost nothing to keep.
+
+**Skipped:** the "All Years" sheet had a second, un-specified sub-table
+(per-year score-vs-league-average, semifinal W/L counts) — Keith was using it
+informally to check a semifinal-losses pattern, not part of the planned views.
+Left out of this build.
+
+**Manual entry included, not deferred.** CLAUDE.md frames weekly results as
+"filled in by hand today" — the existing baseline workflow, not the "future
+automation" (read-only connector sync, still not committed to). The Games
+view's click-to-edit week rows are that same manual workflow moved into the
+tool, so 2026 and beyond have somewhere to go.
+
+---
+
 ## 2026-07-04 — Win/loss tracking design
 
 **Context:** Keith laid out what he wants from the W-L tracker, based on the shape of the legacy W-L 2025.xlsx (13 years of history, per-year and all-years rollups).

@@ -40,23 +40,6 @@ CREATE TABLE IF NOT EXISTS roster_slots (
     PRIMARY KEY (league_id, slot_name)
 );
 
--- Per-season league facts: buy-in/payout/finish and W-L record.
--- Kept separate from `leagues` because these are year-scoped (dues and
--- payouts can change year to year even for the same league).
-CREATE TABLE IF NOT EXISTS league_seasons (
-    league_season_id    INTEGER PRIMARY KEY,
-    league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
-    season              INTEGER NOT NULL,
-    wins                INTEGER NOT NULL DEFAULT 0,
-    losses              INTEGER NOT NULL DEFAULT 0,
-    ties                INTEGER NOT NULL DEFAULT 0,
-    buy_in              REAL,
-    max_payout          REAL,
-    actual_payout       REAL,
-    finish_position     INTEGER,
-    UNIQUE (league_id, season)
-);
-
 -- Teams within a league (up to 18 per league). `is_mine` flags Keith's
 -- own team; `draft_position` is the snake-draft slot used to drive
 -- order-based pick entry in the draft tool.
@@ -264,21 +247,51 @@ CREATE INDEX IF NOT EXISTS idx_transactions_league_season ON transactions (leagu
 -- Matchup history (W-L tracking)
 -- ============================================================
 
--- One row per week per one of Keith's teams — matches the legacy per-year
--- "Results" sheet (league, week, PF, PA, differential) and feeds the
--- Games/Weekly/Close-games W-L views directly.
+-- Stable identity for a real-world league across many seasons, independent of
+-- the live `leagues` table (which gets recreated/re-synced each year as
+-- platform league IDs churn, especially Yahoo's). W-L history must survive
+-- that churn, so it never references `leagues`/`teams` at all — same idea as
+-- separating a canonical player identity from churn-prone platform aliases.
+CREATE TABLE IF NOT EXISTS league_history (
+    league_history_id   INTEGER PRIMARY KEY,
+    name                TEXT NOT NULL UNIQUE,
+    active              INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+);
+
+-- Per-season league facts: buy-in/payout/finish and W-L record. Year-scoped
+-- (dues and payouts can change year to year even for the same league) and
+-- keyed off `league_history`, not the live `leagues` table, for the same
+-- churn-resistance reason as `matchups` below.
+CREATE TABLE IF NOT EXISTS league_seasons (
+    league_season_id    INTEGER PRIMARY KEY,
+    league_history_id   INTEGER NOT NULL REFERENCES league_history (league_history_id) ON DELETE CASCADE,
+    season              INTEGER NOT NULL,
+    wins                INTEGER NOT NULL DEFAULT 0,
+    losses              INTEGER NOT NULL DEFAULT 0,
+    ties                INTEGER NOT NULL DEFAULT 0,
+    buy_in              REAL,
+    max_payout          REAL,
+    actual_payout       REAL,
+    finish_position     INTEGER,
+    UNIQUE (league_history_id, season)
+);
+
+-- One row per week per league-history entry — matches the legacy per-year
+-- "Results" sheet (league, week, PF, PA, differential, playoff round) and
+-- feeds the Games/Weekly/Close-games W-L views directly. No opponent
+-- identity: the legacy data never tracked it, and there's only ever one row
+-- per league-history per week (this is always "my" result), never per team.
 CREATE TABLE IF NOT EXISTS matchups (
     matchup_id          INTEGER PRIMARY KEY,
-    league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
-    team_id             INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
-    opponent_team_id    INTEGER REFERENCES teams (team_id) ON DELETE SET NULL,
+    league_history_id   INTEGER NOT NULL REFERENCES league_history (league_history_id) ON DELETE CASCADE,
     season              INTEGER NOT NULL,
     week                INTEGER NOT NULL,
     points_for          REAL NOT NULL,
     points_against      REAL NOT NULL,
     outcome             TEXT NOT NULL CHECK (outcome IN ('W', 'L', 'T')),
-    UNIQUE (league_id, team_id, season, week)
+    playoff_round       TEXT CHECK (playoff_round IN ('semifinal', 'final', 'third_place')),
+    UNIQUE (league_history_id, season, week)
 );
 
 CREATE INDEX IF NOT EXISTS idx_matchups_season_week ON matchups (season, week);
-CREATE INDEX IF NOT EXISTS idx_matchups_league_season ON matchups (league_id, season);
+CREATE INDEX IF NOT EXISTS idx_matchups_league_season ON matchups (league_history_id, season);

@@ -969,3 +969,148 @@ table.scoring-table td:last-child {
   font-size: 12px;
   color: var(--ink-muted);
 }
+
+/* ---- W-L tracker ---- */
+
+.wl-view { max-width: 100%; }
+
+.wl-empty {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+}
+
+.wl-games-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.wl-game-card {
+  flex: 0 0 260px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.wl-game-card h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+}
+
+table.wl-games-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+table.wl-games-table th,
+table.wl-games-table td {
+  border: 1px solid var(--line);
+  padding: 4px 6px;
+  text-align: left;
+}
+
+table.wl-games-table tfoot td {
+  font-weight: 600;
+  background: var(--bg);
+}
+
+tr.wl-week-empty {
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+table.wl-games-table tbody tr:not(.wl-week-empty) {
+  cursor: pointer;
+}
+
+table.wl-games-table tbody tr:hover { background: var(--highlight); }
+
+td.wl-outcome-W { background: var(--filled); }
+td.wl-outcome-L { background: var(--highlight); }
+td.wl-outcome-T { background: var(--bg); }
+
+.wl-diff-positive { color: var(--steal); font-weight: 600; }
+.wl-diff-negative { color: var(--accent); font-weight: 600; }
+
+.wl-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.wl-edit-form input {
+  width: 64px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 12.5px;
+}
+
+.wl-edit-form select {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 12.5px;
+}
+
+.wl-save-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+table.wl-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--surface);
+}
+
+table.wl-data-table th {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  background: var(--bg);
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-muted);
+}
+
+table.wl-data-table td {
+  border: 1px solid var(--line);
+  padding: 5px 8px;
+  text-align: left;
+}
+
+table.wl-weekly-table td:not(:first-child),
+table.wl-leagues-table td:not(:first-child),
+table.wl-close-games-table td:not(:first-child),
+table.wl-all-time-table td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
+
+.wl-close-games-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.wl-close-games-section { flex: 1 1 320px; }
+
+.wl-close-games-section h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+}

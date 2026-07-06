@@ -5,6 +5,7 @@ import { renderRostersTab } from "./rosters.js";
 import { renderLeagueSettings } from "./leagueSettings.js";
 import { renderInSeasonView } from "./inSeason.js";
 import { renderExposureView } from "./exposure.js";
+import { renderWlView } from "./wl.js";
 
 const state = {
   leagueId: null,
@@ -14,6 +15,8 @@ const state = {
   activeTab: "draft",
   inSeasonTab: "weekly",
   week: null,
+  wlTab: "games",
+  wlYear: new Date().getFullYear(),
 };
 
 const tabRenderers = {
@@ -28,18 +31,22 @@ const draftToolControls = document.getElementById("draft-tool-controls");
 const tabBar = document.getElementById("tab-bar");
 const inSeasonControls = document.getElementById("in-season-controls");
 const inSeasonTabBar = document.getElementById("in-season-tab-bar");
+const wlControls = document.getElementById("wl-controls");
+const wlTabBar = document.getElementById("wl-tab-bar");
 const leagueSelect = document.getElementById("league-select");
 const weekInput = document.getElementById("in-season-week-input");
+const wlYearInput = document.getElementById("wl-year-input");
 
 const SECTION_ROWS = {
   draft_tool: [leagueSelectRow, draftToolControls, tabBar],
   in_season: [leagueSelectRow, inSeasonControls, inSeasonTabBar],
   exposure: [],
   league_settings: [],
+  wl: [wlControls, wlTabBar],
 };
 
 function setVisibleRows(visibleRows) {
-  const all = [leagueSelectRow, draftToolControls, tabBar, inSeasonControls, inSeasonTabBar];
+  const all = [leagueSelectRow, draftToolControls, tabBar, inSeasonControls, inSeasonTabBar, wlControls, wlTabBar];
   for (const row of all) {
     row.style.display = visibleRows.includes(row) ? "" : "none";
   }
@@ -57,6 +64,11 @@ async function renderActive() {
 
     if (state.activeSection === "exposure") {
       await renderExposureView(tabContent);
+      return;
+    }
+
+    if (state.activeSection === "wl") {
+      await renderWlView(tabContent, state);
       return;
     }
 
@@ -129,9 +141,16 @@ function init() {
 
   wireTabGroup("#tab-bar .tab-button", "tab", "activeTab");
   wireTabGroup("#in-season-tab-bar .tab-button", "inSeasonTab", "inSeasonTab");
+  wireTabGroup("#wl-tab-bar .tab-button", "wlTab", "wlTab");
 
   weekInput.addEventListener("change", () => {
     state.week = weekInput.value ? Number(weekInput.value) : null;
+    renderActive();
+  });
+
+  wlYearInput.value = state.wlYear;
+  wlYearInput.addEventListener("change", () => {
+    state.wlYear = wlYearInput.value ? Number(wlYearInput.value) : new Date().getFullYear();
     renderActive();
   });
 

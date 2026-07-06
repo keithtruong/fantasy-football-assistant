@@ -67,4 +67,12 @@ export const api = {
       `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")
     ),
   getExposure: () => request("/api/exposure"),
+  getWlLeagueHistory: () => request("/api/wl/league_history"),
+  getWlGames: (year) => request(`/api/wl/games?year=${year}`),
+  getWlWeekly: (year) => request(`/api/wl/weekly?year=${year}`),
+  getWlLeagues: (year) => request(`/api/wl/leagues?year=${year}`),
+  getWlCloseGames: (year) => request(`/api/wl/close_games?year=${year}`),
+  getWlAllTime: () => request("/api/wl/all_time"),
+  putWlMatchup: (payload) =>
+    request("/api/wl/matchups", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(payload) }),
 };
