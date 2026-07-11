@@ -230,6 +230,10 @@ tr.round-break td {
   border-bottom: 2px solid var(--ink-strong);
 }
 
+tr.future-pick-row {
+  background: var(--highlight);
+}
+
 .player-name-cell {
   cursor: pointer;
 }

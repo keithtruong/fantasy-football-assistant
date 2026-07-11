@@ -187,7 +187,37 @@ function computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId })
   return tags;
 }
 
-function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, exposureByPlayerId, refresh }) {
+/** If the draft proceeded exactly in rank order from here on, which currently-available
+ * players would land in one of my future picks — the "worst case" player per round, since
+ * any real-world deviation from rank order can only let a better player fall, not worse. */
+function computeFuturePickIds({ available, teamCount, myTeam, rosterSlotCounts, draftData }) {
+  const totalRounds = Object.values(rosterSlotCounts).reduce((sum, n) => sum + n, 0);
+  const totalPicks = teamCount * totalRounds;
+  const futurePicks = new Map(); // player_id -> round
+
+  let pickNumber = draftData.on_the_clock.pick_number;
+  let i = 0;
+  while (pickNumber <= totalPicks && i < available.length) {
+    const { round, draftPosition } = computePickSlot(pickNumber, teamCount);
+    if (draftPosition === myTeam.draft_position) {
+      futurePicks.set(available[i].player_id, round);
+    }
+    pickNumber += 1;
+    i += 1;
+  }
+  return futurePicks;
+}
+
+function buildRankList({
+  available,
+  teamCount,
+  myTeam,
+  rankingsByPlayerId,
+  exposureByPlayerId,
+  rosterSlotCounts,
+  draftData,
+  refresh,
+}) {
   const table = el("table", "rank-list");
   const thead = document.createElement("thead");
   thead.innerHTML =
@@ -195,6 +225,7 @@ function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, expos
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
+  const futurePicks = computeFuturePickIds({ available, teamCount, myTeam, rosterSlotCounts, draftData });
 
   for (const player of available) {
     const row = document.createElement("tr");
@@ -203,6 +234,10 @@ function buildRankList({ available, teamCount, myTeam, rankingsByPlayerId, expos
     // a line under rank 12, 24, 36... regardless of who's already been drafted.
     if (player.rank != null && player.rank % teamCount === 0) {
       row.classList.add("round-break");
+    }
+    if (futurePicks.has(player.player_id)) {
+      row.classList.add("future-pick-row");
+      row.title = `Your worst-case pick in Round ${futurePicks.get(player.player_id)} if the draft goes exactly by rank from here`;
     }
 
     const rankCell = document.createElement("td");
