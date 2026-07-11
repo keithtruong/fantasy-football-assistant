@@ -36,6 +36,8 @@ const wlTabBar = document.getElementById("wl-tab-bar");
 const leagueSelect = document.getElementById("league-select");
 const weekInput = document.getElementById("in-season-week-input");
 const wlYearInput = document.getElementById("wl-year-input");
+const refreshRankingsButton = document.getElementById("refresh-rankings-button");
+const rankingsSyncStatus = document.getElementById("rankings-sync-status");
 
 const SECTION_ROWS = {
   draft_tool: [leagueSelectRow, draftToolControls, tabBar],
@@ -106,6 +108,24 @@ async function reloadLeagues() {
   await renderActive();
 }
 
+function formatSyncedAt(sqliteDatetime) {
+  if (!sqliteDatetime) return "Never synced";
+  // SQLite's datetime('now') is UTC with a space separator — make it an
+  // unambiguous ISO string before handing it to Date.
+  const date = new Date(sqliteDatetime.replace(" ", "T") + "Z");
+  return `Last synced ${date.toLocaleString()}`;
+}
+
+async function refreshSyncStatus() {
+  try {
+    const status = await api.getRankingsSyncStatus(state.season, state.scoringFormat);
+    rankingsSyncStatus.textContent = formatSyncedAt(status.synced_at);
+    rankingsSyncStatus.className = "rankings-sync-status";
+  } catch {
+    // Non-critical — leave whatever status text was already showing.
+  }
+}
+
 function wireTabGroup(selector, dataAttr, stateKey) {
   document.querySelectorAll(selector).forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -137,7 +157,30 @@ function init() {
   scoringSelect.addEventListener("change", () => {
     state.scoringFormat = scoringSelect.value;
     renderActive();
+    refreshSyncStatus();
   });
+
+  refreshRankingsButton.addEventListener("click", async () => {
+    refreshRankingsButton.disabled = true;
+    rankingsSyncStatus.textContent = "Refreshing…";
+    rankingsSyncStatus.className = "rankings-sync-status";
+    try {
+      const result = await api.syncRankings(state.season, state.scoringFormat);
+      const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
+      rankingsSyncStatus.textContent =
+        `${formatSyncedAt(result.synced_at)} — ${result.player_count} players, ${result.tier_count} tiers${unresolvedNote}`;
+      rankingsSyncStatus.className = result.unresolved_count
+        ? "rankings-sync-status rankings-sync-warning"
+        : "rankings-sync-status";
+      await renderActive();
+    } catch (err) {
+      rankingsSyncStatus.textContent = err.message;
+      rankingsSyncStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshRankingsButton.disabled = false;
+    }
+  });
+  refreshSyncStatus();
 
   wireTabGroup("#tab-bar .tab-button", "tab", "activeTab");
   wireTabGroup("#in-season-tab-bar .tab-button", "inSeasonTab", "inSeasonTab");

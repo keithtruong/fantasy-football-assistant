@@ -75,4 +75,12 @@ export const api = {
   getWlAllTime: () => request("/api/wl/all_time"),
   putWlMatchup: (payload) =>
     request("/api/wl/matchups", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(payload) }),
+  syncRankings: (season, scoringFormat) =>
+    request("/api/rankings/sync", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ season, scoring_format: scoringFormat }),
+    }),
+  getRankingsSyncStatus: (season, scoringFormat) =>
+    request(`/api/rankings/sync_status?season=${season}&scoring_format=${scoringFormat}`),
 };

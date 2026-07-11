@@ -1114,3 +1114,33 @@ table.wl-all-time-table td:not(:first-child) {
   margin: 0 0 8px;
   color: var(--ink-strong);
 }
+
+/* ---- Rankings sync ---- */
+
+#refresh-rankings-button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+#refresh-rankings-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#refresh-rankings-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.rankings-sync-status {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.rankings-sync-status.rankings-sync-warning { color: var(--accent); }
+.rankings-sync-status.rankings-sync-error { color: var(--accent); font-weight: 600; }
