@@ -1,9 +1,9 @@
 """Read-only Yahoo connector. Requires .yahoo_oauth.json (see config.py) with valid OAuth2 tokens.
 
 Only ever call read-only yahoo_fantasy_api methods here (teams(), settings(), positions(),
-Team.roster(), player_details()) — this project never writes back to any platform, and
-yahoo_fantasy_api's Team object also exposes add_player/drop_player/change_positions/
-propose_trade, which must never be called from this codebase.
+Team.roster(), player_details(), Game.league_ids()) — this project never writes back to any
+platform, and yahoo_fantasy_api's Team object also exposes add_player/drop_player/
+change_positions/propose_trade, which must never be called from this codebase.
 """
 
 import re
@@ -44,13 +44,26 @@ def _map_status(status: str) -> str:
     return _STATUS_MAP.get(status, "questionable" if status else "healthy")
 
 
-def _connect(league_id: str, oauth_path=YAHOO_OAUTH_PATH):
+def _connect_game(oauth_path=YAHOO_OAUTH_PATH):
     from yahoo_oauth import OAuth2  # lazy import — optional heavy dependency
     import yahoo_fantasy_api as yfa
 
     sc = OAuth2(None, None, from_file=str(oauth_path))
-    game = yfa.Game(sc, "nfl")
-    return game.to_league(league_id)
+    return yfa.Game(sc, "nfl")
+
+
+def _connect(league_id: str, oauth_path=YAHOO_OAUTH_PATH):
+    return _connect_game(oauth_path).to_league(league_id)
+
+
+def list_league_ids(season: int | None = None, oauth_path=YAHOO_OAUTH_PATH) -> list[str]:
+    """Returns this account's Yahoo league keys, e.g. '470.l.150416'.
+
+    Yahoo league keys are `{game_key}.l.{league_id}`, and game_key changes every season —
+    the bare numeric ID in a Yahoo league URL is only the league_id portion. Pass `season`
+    to filter to one year's leagues; omit it to list every season on record.
+    """
+    return _connect_game(oauth_path).league_ids(year=season)
 
 
 def get_league_settings(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> dict:

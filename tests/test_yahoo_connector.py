@@ -122,5 +122,18 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(wilson["position"], "WR")
 
 
+class TestListLeagueIds(unittest.TestCase):
+    @patch("ffassistant.connectors.yahoo._connect_game")
+    def test_returns_league_keys_for_season(self, mock_connect_game):
+        game = MagicMock()
+        game.league_ids.return_value = ["470.l.124095", "470.l.150416"]
+        mock_connect_game.return_value = game
+
+        ids = yahoo.list_league_ids(season=2026)
+
+        self.assertEqual(ids, ["470.l.124095", "470.l.150416"])
+        game.league_ids.assert_called_once_with(year=2026)
+
+
 if __name__ == "__main__":
     unittest.main()
