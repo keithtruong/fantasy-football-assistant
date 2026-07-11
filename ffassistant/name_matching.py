@@ -48,6 +48,7 @@ def match_player(
     rows = conn.execute(query, params).fetchall()
     if len(rows) == 1:
         _record_alias(conn, source, raw_name, rows[0]["player_id"])
+        _clear_unresolved(conn, source, raw_name)
         return rows[0]["player_id"]
 
     # 3. Suffix-normalized match against canonical names.
@@ -63,6 +64,7 @@ def match_player(
     ]
     if len(candidates) == 1:
         _record_alias(conn, source, raw_name, candidates[0]["player_id"])
+        _clear_unresolved(conn, source, raw_name)
         return candidates[0]["player_id"]
 
     # Unresolved (no match, or an ambiguous multi-match) — queue for manual review.
@@ -77,10 +79,7 @@ def match_player(
 def resolve_override(conn: sqlite3.Connection, source: str, raw_name: str, player_id: int) -> None:
     """Manually assign an unresolved name to a player_id, clearing it from the review queue."""
     _record_alias(conn, source, raw_name, player_id)
-    conn.execute(
-        "DELETE FROM unresolved_aliases WHERE source = ? AND raw_name = ?",
-        (source, raw_name),
-    )
+    _clear_unresolved(conn, source, raw_name)
     conn.commit()
 
 
@@ -98,3 +97,10 @@ def _record_alias(conn: sqlite3.Connection, source: str, raw_name: str, player_i
         (player_id, source, raw_name),
     )
     conn.commit()
+
+
+def _clear_unresolved(conn: sqlite3.Connection, source: str, raw_name: str) -> None:
+    conn.execute(
+        "DELETE FROM unresolved_aliases WHERE source = ? AND raw_name = ?",
+        (source, raw_name),
+    )

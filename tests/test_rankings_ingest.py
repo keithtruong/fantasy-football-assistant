@@ -64,6 +64,47 @@ class TestSyncDraftRankings(unittest.TestCase):
         self.assertEqual(count, 2)  # not 4
 
     @patch("ffassistant.ingest.rankings.rankings_api.get_draft_rankings", return_value=FAKE_ROWS)
+    def test_create_missing_seeds_a_new_canonical_player(self, _mock):
+        rankings_ingest.sync_draft_rankings(self.conn, season=2026, scoring_format="full_ppr", create_missing=True)
+
+        rows = self.conn.execute(
+            "SELECT p.full_name FROM rankings r JOIN players p ON p.player_id = r.player_id ORDER BY r.rank"
+        ).fetchall()
+        self.assertEqual([r["full_name"] for r in rows], ["Ja'Marr Chase", "Christian McCaffrey", "Totally Unknown Rookie"])
+
+        unresolved = self.conn.execute(
+            "SELECT raw_name FROM unresolved_aliases WHERE source = 'rankings_provider'"
+        ).fetchall()
+        self.assertEqual(unresolved, [])  # cleared, not left queued
+
+        player_count = self.conn.execute("SELECT COUNT(*) AS c FROM players").fetchone()["c"]
+        self.assertEqual(player_count, 3)
+
+    @patch("ffassistant.ingest.rankings.rankings_api.get_draft_rankings")
+    def test_create_missing_does_not_guess_an_ambiguous_match(self, mock_get):
+        # Two existing "Totally Unknown Rookie" WRs already share that exact
+        # name/position — the raw name is ambiguous, not a genuine miss, so
+        # create_missing must not spawn a third (wrong) duplicate.
+        self.conn.execute(
+            "INSERT INTO players (player_id, full_name, position) VALUES (3, 'Totally Unknown Rookie', 'WR')"
+        )
+        self.conn.execute(
+            "INSERT INTO players (player_id, full_name, position) VALUES (4, 'Totally Unknown Rookie', 'WR')"
+        )
+        self.conn.commit()
+        mock_get.return_value = FAKE_ROWS
+
+        rankings_ingest.sync_draft_rankings(self.conn, season=2026, scoring_format="full_ppr", create_missing=True)
+
+        player_count = self.conn.execute("SELECT COUNT(*) AS c FROM players").fetchone()["c"]
+        self.assertEqual(player_count, 4)  # no new player created
+
+        unresolved = self.conn.execute(
+            "SELECT raw_name FROM unresolved_aliases WHERE source = 'rankings_provider'"
+        ).fetchall()
+        self.assertEqual([r["raw_name"] for r in unresolved], ["Totally Unknown Rookie"])  # still queued
+
+    @patch("ffassistant.ingest.rankings.rankings_api.get_draft_rankings", return_value=FAKE_ROWS)
     def test_different_scoring_formats_coexist(self, _mock):
         rankings_ingest.sync_draft_rankings(self.conn, season=2026, scoring_format="full_ppr")
         rankings_ingest.sync_draft_rankings(self.conn, season=2026, scoring_format="superflex")

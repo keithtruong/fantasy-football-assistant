@@ -2,19 +2,25 @@
 
 Expects `conn` to have `row_factory = sqlite3.Row` (see ffassistant.db.get_connection).
 
-Unlike the platform connectors, a name that fails to match here is NOT auto-created
-as a new canonical player — scraped rankings names are less trustworthy than a
-platform's structured roster data, so unmatched names stay queued in
-unresolved_aliases (via match_player) for manual review instead of being guessed at.
+By default, a name that fails to match here is NOT auto-created as a new canonical
+player — scraped rankings names are less trustworthy than a platform's structured
+roster data, so unmatched names stay queued in unresolved_aliases (via match_player)
+for manual review instead of being guessed at. `sync_draft_rankings` is the one
+exception: its `create_missing` flag opts into platform-style auto-creation, since
+the Top-300 feed is structured (full_name/position/nfl_team per row) like a roster.
+It's meant for the once-a-season preseason bootstrap (see scripts/seed_players_from_rankings.py),
+not the routine "Refresh Rankings" sync, which should keep create_missing off.
 """
 
 import sqlite3
 
 from ffassistant.connectors import rankings as rankings_api
-from ffassistant.name_matching import match_player
+from ffassistant.name_matching import match_player, normalize, resolve_override
 
 
-def sync_draft_rankings(conn: sqlite3.Connection, season: int, scoring_format: str) -> None:
+def sync_draft_rankings(
+    conn: sqlite3.Connection, season: int, scoring_format: str, create_missing: bool = False
+) -> None:
     rows = rankings_api.get_draft_rankings(scoring_format)
 
     # Full-snapshot sync: replace this season/scoring_format's rankings rather
@@ -27,13 +33,39 @@ def sync_draft_rankings(conn: sqlite3.Connection, season: int, scoring_format: s
     for row in rows:
         player_id = match_player(conn, "rankings_provider", row["full_name"], row["position"])
         if player_id is None:
-            continue  # queued in unresolved_aliases; skip until manually resolved
+            if not create_missing or _has_any_candidate(conn, row["full_name"], row["position"]):
+                continue  # queued in unresolved_aliases; skip until manually resolved
+            player_id = _create_player_from_ranking(conn, row)
         conn.execute(
             "INSERT INTO rankings (player_id, ranking_type, season, scoring_format, rank, adp) "
             "VALUES (?, 'draft', ?, ?, ?, ?)",
             (player_id, season, scoring_format, row["rank"], row["adp"]),
         )
     conn.commit()
+
+
+def _has_any_candidate(conn: sqlite3.Connection, full_name: str, position) -> bool:
+    """True if match_player's miss was an ambiguous multi-match rather than a
+    genuine zero-candidate miss — a unique candidate would already have matched,
+    so any candidate showing up here means more than one exists."""
+    query = "SELECT full_name FROM players"
+    params = []
+    if position:
+        query += " WHERE position = ?"
+        params.append(position)
+    candidates = conn.execute(query, params).fetchall()
+    normalized_target = normalize(full_name)
+    return any(normalize(r["full_name"]) == normalized_target for r in candidates)
+
+
+def _create_player_from_ranking(conn: sqlite3.Connection, row) -> int:
+    cur = conn.execute(
+        "INSERT INTO players (full_name, position, nfl_team) VALUES (?, ?, ?)",
+        (row["full_name"], row["position"], row["nfl_team"]),
+    )
+    player_id = cur.lastrowid
+    resolve_override(conn, "rankings_provider", row["full_name"], player_id)
+    return player_id
 
 
 def sync_weekly_rankings(conn: sqlite3.Connection, season: int, week: int) -> None:
