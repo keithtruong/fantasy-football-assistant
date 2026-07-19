@@ -154,7 +154,8 @@ function buildPositionSummary(teams, rosterSlotCounts) {
       const count = team.roster.filter((p) => p.position === position).length;
       const cell = document.createElement("td");
       cell.textContent = count;
-      if (required > 0 && count >= required) cell.className = "slot-filled";
+      if (count === 0) cell.classList.add("count-zero");
+      else if (required > 0 && count >= required) cell.classList.add("slot-filled");
       row.appendChild(cell);
     }
     tbody.appendChild(row);
