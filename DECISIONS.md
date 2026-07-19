@@ -6,6 +6,47 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-18 — Manual player-call notes import
+
+**Context:** Keith keeps a gitignored markdown file of sleeper/shy-away player
+calls transcribed by hand from outside draft-prep research, grouped by team,
+each line carrying a player name, a SLEEPER or SHY-AWAY verdict, an approximate
+timestamp, and a one-sentence reason. Per CLAUDE.md's confidentiality rule,
+neither that file nor its source is named anywhere in this repo — it's referred
+to generically as "manual player-call notes."
+
+**Built a one-off import script (`scripts/import_manual_calls.py`), not a
+recurring ingestion pipeline.** Unlike the rankings sync, these notes are a
+single hand-curated snapshot from a point-in-time source, not something that
+refreshes on a schedule — a run-once script matches how the data actually
+arrives, following the same shape as `seed_players_from_rankings.py` and the
+other one-off `scripts/import_*.py` files.
+
+**Verdict parsing only skips lines explicitly marked ambiguous ("mixed",
+"split opinion", or carrying both/neither signal-word).** Everything else —
+including "mild SLEEPER," parenthetical qualifiers like "(buy-low)," or a
+name written as two players separated by a slash — is treated as a real,
+single-verdict line and passed to the matching pipeline. Names that don't
+resolve cleanly (slash-separated alternates, a position description standing
+in for a real name, etc.) fall through to `unresolved_aliases` for manual
+review exactly like any other source, rather than adding source-specific
+guessing logic to the parser.
+
+**Reused the existing exact -> suffix-normalized -> manual-override matching
+pipeline with a generic source tag,** consistent with how the rankings
+provider is handled — no separate matching logic for this source, no source
+name in the tag string.
+
+**Open question, not resolved here: should `player_manual_tags` grow a
+`note`/`source` column?** The table currently stores one tag per player with
+no reasoning, source, or timestamp — fine when every tag was Keith's own gut
+call, but this import is the first time tags are coming from an external
+source, and the one-sentence reasoning behind each call is being discarded on
+import. Left as-is for now since nothing downstream needs it yet; flagged for
+Keith to decide rather than adding a schema column unasked.
+
+---
+
 ## 2026-07-05 — Win/loss tracking build
 
 **Context:** Building the W-L tracker (design locked in 2026-07-04) against the

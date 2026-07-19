@@ -18,6 +18,10 @@ Thumbs.db
 # here or anywhere committed — see CLAUDE.md's confidentiality rule)
 .rankings_config.json
 
+# Personal research notes that name the rankings provider by brand (e.g.
+# podcast recaps) — fine to keep locally per CLAUDE.md, never committed
+notes/
+
 # Dependencies (adjust once tech stack is chosen)
 node_modules/
 __pycache__/
