@@ -138,6 +138,20 @@ body {
   margin-bottom: 8px;
 }
 
+.clock-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.picks-until-next {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
 .draft-position-dots {
   display: inline-flex;
   align-items: center;

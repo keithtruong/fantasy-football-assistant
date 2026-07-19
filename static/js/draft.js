@@ -93,7 +93,12 @@ function buildPickEntry({ teams, teamCount, myTeam, draftData, available, state,
   const clockText = document.createElement("span");
   clockText.textContent = `On the clock — Pick ${clock.pick_number} (Rd ${clock.round}): ${clock.team_name}`;
   clockLine.appendChild(clockText);
-  clockLine.appendChild(buildDraftPositionDots(teamCount, clock.pick_number, myTeam.draft_position));
+
+  const clockRight = el("div", "clock-right");
+  clockRight.appendChild(buildPicksUntilMyNextPick(teamCount, clock.pick_number, myTeam.draft_position));
+  clockRight.appendChild(buildDraftPositionDots(teamCount, clock.pick_number, myTeam.draft_position));
+  clockLine.appendChild(clockRight);
+
   box.appendChild(clockLine);
 
   const searchRow = buildPlayerSearch({
@@ -122,6 +127,24 @@ function buildPickEntry({ teams, teamCount, myTeam, draftData, available, state,
   }
 
   return box;
+}
+
+/** How many picks (across all teams) happen before this team is on the clock again —
+ * 0 when it's this team's own pick right now. */
+function picksUntilMyNextPick(teamCount, pickNumber, myDraftPosition) {
+  let count = 0;
+  for (let pick = pickNumber; count < teamCount; pick++) {
+    if (computePickSlot(pick, teamCount).draftPosition === myDraftPosition) break;
+    count += 1;
+  }
+  return count;
+}
+
+function buildPicksUntilMyNextPick(teamCount, pickNumber, myDraftPosition) {
+  const count = picksUntilMyNextPick(teamCount, pickNumber, myDraftPosition);
+  const span = el("span", "picks-until-next");
+  span.textContent = count === 0 ? "You're on the clock" : `${count} pick${count === 1 ? "" : "s"} until your next pick`;
+  return span;
 }
 
 /** One dot per draft seat, green for whoever's on the clock and orange for
