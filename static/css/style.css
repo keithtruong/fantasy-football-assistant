@@ -551,6 +551,64 @@ td.count-zero { color: var(--ink-muted); opacity: 0.55; }
   opacity: 0.65;
 }
 
+/* ---- Tiers tab ---- */
+
+.tiers-board {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.tier-column {
+  flex: 1 1 220px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tier-column-heading {
+  display: flex;
+  align-items: center;
+}
+
+.tier-column-empty {
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.tier-block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.tier-block-current {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.tier-block-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin-bottom: 4px;
+}
+
+table.tier-player-table th:first-child,
+table.tier-player-table td:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.tier-player-drafted {
+  color: var(--ink-muted);
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
 /* ---- League Settings ---- */
 
 .league-settings {

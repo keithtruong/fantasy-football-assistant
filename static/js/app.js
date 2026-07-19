@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { renderDraftTab } from "./draft.js";
 import { renderGridTab } from "./grid.js";
+import { renderTiersTab } from "./tiers.js";
 import { renderRostersTab } from "./rosters.js";
 import { renderLeagueSettings } from "./leagueSettings.js";
 import { renderInSeasonView } from "./inSeason.js";
@@ -22,6 +23,7 @@ const state = {
 const tabRenderers = {
   draft: renderDraftTab,
   grid: renderGridTab,
+  tiers: renderTiersTab,
   rosters: renderRostersTab,
 };
 
