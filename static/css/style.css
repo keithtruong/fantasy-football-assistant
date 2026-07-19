@@ -9,6 +9,8 @@
   --filled: #e3f1e8;
   --highlight: #fff4d9;
   --steal: #2f7d52;
+  --dot-neutral: #a8b0a4;
+  --dot-mine: #cc7a1e;
   color-scheme: light;
 }
 
@@ -24,6 +26,8 @@
     --filled: #16241c;
     --highlight: #2a2013;
     --steal: #5fae82;
+    --dot-neutral: #3d4f5e;
+    --dot-mine: #e0973f;
     color-scheme: dark;
   }
 }
@@ -125,9 +129,40 @@ body {
 }
 
 .on-the-clock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-weight: 600;
   color: var(--ink-strong);
   margin-bottom: 8px;
+}
+
+.draft-position-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.position-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dot-neutral);
+}
+
+.position-dot.dot-current {
+  background: var(--steal);
+}
+
+.position-dot.dot-mine {
+  background: var(--dot-mine);
+}
+
+.position-dot.dot-current.dot-mine {
+  background: var(--steal);
+  box-shadow: 0 0 0 2px var(--dot-mine);
 }
 
 .search-row {

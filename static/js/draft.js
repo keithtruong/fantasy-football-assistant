@@ -85,12 +85,15 @@ function buildMain(ctx) {
   return main;
 }
 
-function buildPickEntry({ teams, draftData, available, state, refresh }) {
+function buildPickEntry({ teams, teamCount, myTeam, draftData, available, state, refresh }) {
   const box = el("div", "pick-entry");
   const clock = draftData.on_the_clock;
 
   const clockLine = el("div", "on-the-clock");
-  clockLine.textContent = `On the clock — Pick ${clock.pick_number} (Rd ${clock.round}): ${clock.team_name}`;
+  const clockText = document.createElement("span");
+  clockText.textContent = `On the clock — Pick ${clock.pick_number} (Rd ${clock.round}): ${clock.team_name}`;
+  clockLine.appendChild(clockText);
+  clockLine.appendChild(buildDraftPositionDots(teamCount, clock.pick_number, myTeam.draft_position));
   box.appendChild(clockLine);
 
   const searchRow = buildPlayerSearch({
@@ -119,6 +122,32 @@ function buildPickEntry({ teams, draftData, available, state, refresh }) {
   }
 
   return box;
+}
+
+/** One dot per draft seat, green for whoever's on the clock and orange for
+ * my own seat (both at once when they're the same seat) — a quick "how far
+ * until my pick" glance next to the on-the-clock text. */
+function buildDraftPositionDots(teamCount, pickNumber, myDraftPosition) {
+  const { draftPosition: currentPosition } = computePickSlot(pickNumber, teamCount);
+  const wrap = el("div", "draft-position-dots");
+
+  for (let position = 1; position <= teamCount; position++) {
+    const isCurrent = position === currentPosition;
+    const isMine = position === myDraftPosition;
+
+    const dot = el("span", "position-dot");
+    if (isCurrent) dot.classList.add("dot-current");
+    if (isMine) dot.classList.add("dot-mine");
+
+    if (isCurrent && isMine) dot.title = `Seat ${position} — your pick, on the clock now`;
+    else if (isCurrent) dot.title = `Seat ${position} — on the clock now`;
+    else if (isMine) dot.title = `Seat ${position} — your draft position`;
+    else dot.title = `Seat ${position}`;
+
+    wrap.appendChild(dot);
+  }
+
+  return wrap;
 }
 
 /** One-click drafting of the top 5 available (by rank) — saves the search-type-click
