@@ -17,7 +17,7 @@ def list_leagues():
     rows = db.execute(
         f"""
         SELECT l.league_id, l.name, l.platform, l.platform_league_id, l.team_count, l.active,
-               t.team_id AS my_team_id, t.team_name AS my_team_name
+               t.team_id AS my_team_id, COALESCE(t.display_name, t.team_name) AS my_team_name
         FROM leagues l
         LEFT JOIN teams t ON t.league_id = l.league_id AND t.is_mine = 1
         {where_clause}
@@ -183,7 +183,9 @@ def get_teams(league_id):
 
     rows = db.execute(
         """
-        SELECT t.team_id, t.team_name, t.is_mine, t.draft_position,
+        SELECT t.team_id, COALESCE(t.display_name, t.team_name) AS team_name,
+               t.team_name AS platform_team_name, t.display_name,
+               t.is_mine, t.draft_position,
                dp.pick_number, p.player_id, p.full_name, p.position
         FROM teams t
         LEFT JOIN draft_picks dp ON dp.team_id = t.team_id AND dp.season = ?
@@ -201,6 +203,8 @@ def get_teams(league_id):
             {
                 "team_id": row["team_id"],
                 "team_name": row["team_name"],
+                "platform_team_name": row["platform_team_name"],
+                "display_name": row["display_name"],
                 "is_mine": bool(row["is_mine"]),
                 "draft_position": row["draft_position"],
                 "roster": [],
@@ -226,6 +230,10 @@ def update_team(league_id, team_id):
     fields = {}
     if "draft_position" in body:
         fields["draft_position"] = body["draft_position"]
+    if "display_name" in body:
+        # Blank/whitespace resets to NULL, i.e. "just use the pulled team_name".
+        value = (body["display_name"] or "").strip()
+        fields["display_name"] = value or None
     if "is_mine" in body:
         if body["is_mine"]:
             # Only one team per league can be "mine".

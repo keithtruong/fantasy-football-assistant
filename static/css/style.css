@@ -688,6 +688,15 @@ table.teams-table th, table.teams-table td {
   color: var(--ink);
 }
 
+.display-name-input {
+  width: 140px;
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
 .settings-view {
   margin-top: 8px;
 }

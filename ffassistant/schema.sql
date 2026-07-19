@@ -42,12 +42,16 @@ CREATE TABLE IF NOT EXISTS roster_slots (
 
 -- Teams within a league (up to 18 per league). `is_mine` flags Keith's
 -- own team; `draft_position` is the snake-draft slot used to drive
--- order-based pick entry in the draft tool.
+-- order-based pick entry in the draft tool. `team_name` is owned by the
+-- platform sync (overwritten on every resync); `display_name` is Keith's
+-- own override (e.g. the owner's actual name) and is never touched by
+-- sync — NULL means "just use team_name".
 CREATE TABLE IF NOT EXISTS teams (
     team_id             INTEGER PRIMARY KEY,
     league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
     platform_team_id    TEXT,
     team_name           TEXT NOT NULL,
+    display_name        TEXT,
     is_mine             INTEGER NOT NULL DEFAULT 0 CHECK (is_mine IN (0, 1)),
     draft_position      INTEGER,
     UNIQUE (league_id, platform_team_id)

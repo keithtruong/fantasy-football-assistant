@@ -6,6 +6,38 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-18 — Team display-name override
+
+**Context:** Keith thinks of teams by the actual owner ("Mike," "Steve"), not
+whatever name they've set on the platform, and platform team names get
+overwritten on every re-sync anyway — there was no durable place to attach a
+personal label that would survive a re-sync.
+
+**Added a nullable `teams.display_name` column, left untouched by every
+platform sync** (`team_name` remains sync-owned, overwritten as before).
+`NULL` means "just use `team_name`."
+
+**Coalesced at the SQL layer, not in each frontend view.** Every endpoint
+that already returns a `team_name` field for display (`get_teams`,
+`list_leagues`'s `my_team_name`, draft-picks' on-the-clock/pick-history)
+now returns `COALESCE(display_name, team_name)` under that same field name.
+This meant the Draft tab, Grid tab, and Rosters tab — all of which already
+just render whatever `team_name` they're handed — picked up the override
+for free, with zero changes to any of those three files. Only League
+Settings' team table needed real UI work, since it's the one place that
+needs *both* values at once: the raw pulled name (so Keith can still see what
+the platform actually calls the team) alongside an editable override input.
+`get_teams` exposes the raw value too, under `platform_team_name`, just for
+that table.
+
+**Blank input resets to the pulled name, rather than requiring an exact
+retype.** Submitting an empty/whitespace-only display name clears the
+column back to `NULL` server-side, so the override just falls away and
+`team_name` takes over again on next render — Keith doesn't need to
+remember or retype whatever the platform originally called the team.
+
+---
+
 ## 2026-07-18 — Manual player-call notes import
 
 **Context:** Keith keeps a gitignored markdown file of sleeper/shy-away player

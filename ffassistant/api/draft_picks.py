@@ -15,7 +15,8 @@ def list_picks(league_id):
 
     rows = db.execute(
         """
-        SELECT dp.draft_pick_id, dp.round, dp.pick_number, dp.team_id, t.team_name,
+        SELECT dp.draft_pick_id, dp.round, dp.pick_number, dp.team_id,
+               COALESCE(t.display_name, t.team_name) AS team_name,
                dp.player_id, p.full_name, p.position, dp.picked_at
         FROM draft_picks dp
         JOIN teams t ON t.team_id = dp.team_id
@@ -116,7 +117,8 @@ def _on_the_clock(db, league_id, season) -> dict:
     round_num, draft_position = compute_pick_slot(pick_number, league["team_count"])
 
     team = db.execute(
-        "SELECT team_id, team_name FROM teams WHERE league_id = ? AND draft_position = ?",
+        "SELECT team_id, COALESCE(display_name, team_name) AS team_name FROM teams "
+        "WHERE league_id = ? AND draft_position = ?",
         (league_id, draft_position),
     ).fetchone()
     if team is None:

@@ -239,7 +239,8 @@ function buildSettingsView(settings) {
 function buildTeamsTable(league, teams) {
   const table = document.createElement("table");
   table.className = "teams-table";
-  table.innerHTML = "<thead><tr><th>Draft #</th><th>Team</th><th>Mine?</th></tr></thead>";
+  table.innerHTML =
+    "<thead><tr><th>Draft #</th><th>Pulled Name</th><th>Display Name</th><th>Mine?</th></tr></thead>";
 
   const tbody = document.createElement("tbody");
   const sorted = [...teams].sort((a, b) => (a.draft_position || 0) - (b.draft_position || 0));
@@ -260,8 +261,21 @@ function buildTeamsTable(league, teams) {
     row.appendChild(posCell);
 
     const nameCell = document.createElement("td");
-    nameCell.textContent = team.team_name;
+    nameCell.textContent = team.platform_team_name;
     row.appendChild(nameCell);
+
+    const displayNameCell = document.createElement("td");
+    const displayNameInput = document.createElement("input");
+    displayNameInput.type = "text";
+    displayNameInput.value = team.display_name ?? "";
+    displayNameInput.placeholder = team.platform_team_name;
+    displayNameInput.className = "display-name-input";
+    displayNameInput.title = "Overrides the pulled name everywhere in this tool — leave blank to use the pulled name.";
+    displayNameInput.addEventListener("change", async () => {
+      await api.updateTeam(league.league_id, team.team_id, { display_name: displayNameInput.value });
+    });
+    displayNameCell.appendChild(displayNameInput);
+    row.appendChild(displayNameCell);
 
     const mineCell = document.createElement("td");
     const mineRadio = document.createElement("input");

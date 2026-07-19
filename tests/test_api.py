@@ -95,6 +95,13 @@ class TestLeaguesApi(ApiTestCase):
         team_one = next(t for t in resp.get_json() if t["team_id"] == 1)
         self.assertEqual(team_one["roster"][0]["pick_number"], 1)
 
+    def test_get_teams_defaults_to_platform_name_when_no_override(self):
+        resp = self.client.get("/api/leagues/1/teams")
+        team_one = next(t for t in resp.get_json() if t["team_id"] == 1)
+        self.assertEqual(team_one["team_name"], "Team 1")
+        self.assertEqual(team_one["platform_team_name"], "Team 1")
+        self.assertIsNone(team_one["display_name"])
+
 
 class TestLeagueSettingsApi(ApiTestCase):
     def test_list_leagues_excludes_inactive_by_default(self):
@@ -265,6 +272,32 @@ class TestLeagueSettingsApi(ApiTestCase):
         self.assertEqual(len(mine), 1)
         self.assertEqual(mine[0]["team_id"], 2)
 
+    def test_display_name_overrides_team_name_everywhere(self):
+        self.client.put("/api/leagues/1/teams/1", json={"display_name": "Steve"})
+
+        teams = self.client.get("/api/leagues/1/teams").get_json()
+        team_one = next(t for t in teams if t["team_id"] == 1)
+        self.assertEqual(team_one["team_name"], "Steve")
+        self.assertEqual(team_one["platform_team_name"], "Team 1")  # pulled name preserved
+        self.assertEqual(team_one["display_name"], "Steve")
+
+        # my_team_name on the league list also reflects the override.
+        leagues = self.client.get("/api/leagues").get_json()
+        self.assertEqual(leagues[0]["my_team_name"], "Steve")
+
+        # And so does the on-the-clock/pick-history team_name.
+        clock = self.client.get("/api/leagues/1/draft_picks?season=2026").get_json()["on_the_clock"]
+        self.assertEqual(clock["team_name"], "Steve")
+
+    def test_blank_display_name_resets_to_pulled_name(self):
+        self.client.put("/api/leagues/1/teams/1", json={"display_name": "Steve"})
+        self.client.put("/api/leagues/1/teams/1", json={"display_name": "  "})
+
+        teams = self.client.get("/api/leagues/1/teams").get_json()
+        team_one = next(t for t in teams if t["team_id"] == 1)
+        self.assertEqual(team_one["team_name"], "Team 1")
+        self.assertIsNone(team_one["display_name"])
+
 
 class TestRankingsApi(ApiTestCase):
     def test_returns_ordered_by_rank_with_bye_week_joined(self):
@@ -299,6 +332,12 @@ class TestDraftPicksApi(ApiTestCase):
         self.assertEqual(data["picks"], [])
         self.assertEqual(data["on_the_clock"]["pick_number"], 1)
         self.assertEqual(data["on_the_clock"]["team_name"], "Team 1")
+
+    def test_picks_list_uses_display_name_when_set(self):
+        self.client.put("/api/leagues/1/teams/1", json={"display_name": "Steve"})
+        self.client.post("/api/leagues/1/draft_picks", json={"player_id": 2, "season": 2026})
+        picks = self.client.get("/api/leagues/1/draft_picks?season=2026").get_json()["picks"]
+        self.assertEqual(picks[0]["team_name"], "Steve")
 
     def test_record_pick_advances_clock_in_snake_order(self):
         r1 = self.client.post("/api/leagues/1/draft_picks", json={"player_id": 2, "season": 2026})
