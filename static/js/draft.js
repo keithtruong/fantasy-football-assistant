@@ -81,8 +81,40 @@ function buildLayout(ctx) {
 function buildMain(ctx) {
   const main = el("div", "draft-main");
   main.appendChild(buildPickEntry(ctx));
+  main.appendChild(buildPositionFilter(ctx));
   main.appendChild(buildRankList(ctx));
   return main;
+}
+
+/** Toggleable position chips that filter the rank list below — only that list,
+ * since quick-picks/ADP-lookahead/future-pick projections need the full pool
+ * regardless of what's currently being scrolled through. Empty selection shows
+ * everything. */
+function buildPositionFilter({ state, refresh }) {
+  const wrap = el("div", "position-filter");
+
+  for (const position of CORE_POSITIONS) {
+    const active = state.draftPositionFilter.has(position);
+    const color = positionColor(position);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "position-filter-chip" + (active ? " active" : "");
+    btn.textContent = position;
+    btn.style.borderColor = color;
+    btn.style.background = active ? color : "transparent";
+    btn.style.color = active ? "#fff" : color;
+
+    btn.addEventListener("click", () => {
+      if (active) state.draftPositionFilter.delete(position);
+      else state.draftPositionFilter.add(position);
+      refresh();
+    });
+
+    wrap.appendChild(btn);
+  }
+
+  return wrap;
 }
 
 function buildPickEntry({ teams, teamCount, myTeam, draftData, available, state, refresh }) {
@@ -268,6 +300,7 @@ function buildRankList({
   exposureByPlayerId,
   rosterSlotCounts,
   draftData,
+  state,
   refresh,
 }) {
   const table = el("table", "rank-list");
@@ -277,9 +310,15 @@ function buildRankList({
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
+  // Future-pick projection needs the full pool regardless of the position filter —
+  // it's about what survives to your next turn, not what's currently visible.
   const futurePicks = computeFuturePickIds({ available, teamCount, myTeam, rosterSlotCounts, draftData });
 
-  for (const player of available) {
+  const visiblePlayers = state.draftPositionFilter.size
+    ? available.filter((p) => state.draftPositionFilter.has(p.position))
+    : available;
+
+  for (const player of visiblePlayers) {
     const row = document.createElement("tr");
     // Round-breakpoint line: rank-based (not position-in-list), matching the
     // legacy spreadsheet's conditional formatting — e.g. a 12-team league gets
@@ -440,12 +479,18 @@ function buildTeamMatrix({ teams, rosterSlotCounts, myTeam, teamCount, draftData
   table.appendChild(thead);
 
   const upcomingTeamIds = teamsBeforeMyNextPick(teams, myTeam, draftData.on_the_clock, teamCount);
+  const { draftPosition: onClockPosition } = computePickSlot(draftData.on_the_clock.pick_number, teamCount);
 
   const tbody = document.createElement("tbody");
   for (const team of teams) {
     const row = document.createElement("tr");
-    if (team.is_mine) row.className = "my-team-row";
-    else if (upcomingTeamIds.has(team.team_id)) row.className = "picks-before-mine";
+    // These aren't mutually exclusive — e.g. it can simultaneously be my team's
+    // turn (my-team-row + on-the-clock-row both apply to the same row).
+    const classes = [];
+    if (team.is_mine) classes.push("my-team-row");
+    if (upcomingTeamIds.has(team.team_id)) classes.push("picks-before-mine");
+    if (team.draft_position === onClockPosition) classes.push("on-the-clock-row");
+    if (classes.length) row.className = classes.join(" ");
     const nameCell = document.createElement("td");
     nameCell.textContent = team.team_name;
     row.appendChild(nameCell);

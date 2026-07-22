@@ -18,6 +18,7 @@ const state = {
   week: null,
   wlTab: "games",
   wlYear: new Date().getFullYear(),
+  draftPositionFilter: new Set(),
 };
 
 const tabRenderers = {
