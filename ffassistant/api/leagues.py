@@ -8,6 +8,40 @@ leagues_bp = Blueprint("leagues", __name__, url_prefix="/api/leagues")
 
 _PLATFORMS = ("sleeper", "espn", "yahoo")
 
+# Each platform names its reception stat differently (ESPN: 'REC', Sleeper: 'rec',
+# Yahoo: a slugified display_name like 'reception') since league_scoring stores
+# whatever raw key the connector returned — no normalized vocabulary yet.
+_REC_STAT_KEYS = ("REC", "rec", "reception", "receptions")
+
+
+def _derive_scoring_format(db, league_id) -> str:
+    """Best-effort match to one of the draft rankings' scoring_format buckets
+    (full_ppr/half_ppr/non_ppr/superflex) from this league's own settings, so the
+    draft tool can default to the right rankings instead of always full_ppr.
+
+    Superflex takes priority over PPR level: the rankings provider only publishes
+    one superflex list (no PPR breakdown within it), so a superflex league always
+    maps there regardless of its reception scoring.
+    """
+    superflex = db.execute(
+        "SELECT 1 FROM roster_slots WHERE league_id = ? AND slot_name = 'SUPER_FLEX' AND slot_count > 0",
+        (league_id,),
+    ).fetchone()
+    if superflex:
+        return "superflex"
+
+    placeholders = ", ".join("?" for _ in _REC_STAT_KEYS)
+    row = db.execute(
+        f"SELECT points FROM league_scoring WHERE league_id = ? AND stat_key IN ({placeholders})",
+        (league_id, *_REC_STAT_KEYS),
+    ).fetchone()
+    points = row["points"] if row else 0
+    if points >= 1:
+        return "full_ppr"
+    if points >= 0.5:
+        return "half_ppr"
+    return "non_ppr"
+
 
 @leagues_bp.get("")
 def list_leagues():
@@ -24,7 +58,10 @@ def list_leagues():
         ORDER BY l.name
         """
     ).fetchall()
-    return jsonify([dict(r) for r in rows])
+    leagues = [dict(r) for r in rows]
+    for league in leagues:
+        league["scoring_format"] = _derive_scoring_format(db, league["league_id"])
+    return jsonify(leagues)
 
 
 @leagues_bp.post("")

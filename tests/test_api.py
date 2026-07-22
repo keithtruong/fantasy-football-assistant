@@ -76,6 +76,37 @@ class TestLeaguesApi(ApiTestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["my_team_name"], "Team 1")
 
+    def test_list_leagues_derives_full_ppr_scoring_format(self):
+        # Seed data has league_scoring 'rec' -> 1 and no SUPER_FLEX slot.
+        resp = self.client.get("/api/leagues")
+        self.assertEqual(resp.get_json()[0]["scoring_format"], "full_ppr")
+
+    def test_list_leagues_derives_half_ppr_scoring_format(self):
+        conn = _connect(self.db_path)
+        conn.execute("UPDATE league_scoring SET points = 0.5 WHERE league_id = 1 AND stat_key = 'rec'")
+        conn.commit()
+        conn.close()
+        resp = self.client.get("/api/leagues")
+        self.assertEqual(resp.get_json()[0]["scoring_format"], "half_ppr")
+
+    def test_list_leagues_derives_non_ppr_scoring_format(self):
+        conn = _connect(self.db_path)
+        conn.execute("UPDATE league_scoring SET points = 0 WHERE league_id = 1 AND stat_key = 'rec'")
+        conn.commit()
+        conn.close()
+        resp = self.client.get("/api/leagues")
+        self.assertEqual(resp.get_json()[0]["scoring_format"], "non_ppr")
+
+    def test_list_leagues_derives_superflex_scoring_format_regardless_of_ppr(self):
+        # Superflex takes priority even though this league is also full PPR — the
+        # rankings provider only has one superflex list, no PPR breakdown within it.
+        conn = _connect(self.db_path)
+        conn.execute("INSERT INTO roster_slots (league_id, slot_name, slot_count) VALUES (1, 'SUPER_FLEX', 1)")
+        conn.commit()
+        conn.close()
+        resp = self.client.get("/api/leagues")
+        self.assertEqual(resp.get_json()[0]["scoring_format"], "superflex")
+
     def test_get_settings(self):
         resp = self.client.get("/api/leagues/1/settings")
         data = resp.get_json()

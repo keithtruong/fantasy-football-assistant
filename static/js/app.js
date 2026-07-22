@@ -40,6 +40,9 @@ const weekInput = document.getElementById("in-season-week-input");
 const wlYearInput = document.getElementById("wl-year-input");
 const refreshRankingsButton = document.getElementById("refresh-rankings-button");
 const rankingsSyncStatus = document.getElementById("rankings-sync-status");
+const scoringSelect = document.getElementById("scoring-format-select");
+
+let leaguesById = {};
 
 const SECTION_ROWS = {
   draft_tool: [leagueSelectRow, draftToolControls, tabBar],
@@ -98,16 +101,33 @@ async function renderActive() {
 
 async function reloadLeagues() {
   const leagues = await api.getLeagues();
+  leaguesById = Object.fromEntries(leagues.map((l) => [l.league_id, l]));
   const previousSelection = state.leagueId;
   leagueSelect.innerHTML = leagues.map((l) => `<option value="${l.league_id}">${l.name}</option>`).join("");
 
   const stillExists = leagues.some((l) => l.league_id === previousSelection);
   state.leagueId = stillExists ? previousSelection : leagues[0]?.league_id ?? null;
-  if (state.leagueId != null) leagueSelect.value = state.leagueId;
+  if (state.leagueId != null) {
+    leagueSelect.value = state.leagueId;
+    applyLeagueScoringFormat();
+  }
 
   // Re-render whichever section is actually showing — adding a league while ON
   // League Settings must reflect in the list without needing a full page reload.
   await renderActive();
+}
+
+// Defaults the scoring-format picker to whatever this league's own settings imply
+// (see leagues API's derived `scoring_format`) so switching to e.g. a superflex
+// league surfaces superflex rankings without a manual dropdown change first.
+// Still just sets the same dropdown/state a manual change would — nothing stops
+// overriding it afterward if the derived guess is wrong for a given league.
+function applyLeagueScoringFormat() {
+  const scoringFormat = leaguesById[state.leagueId]?.scoring_format;
+  if (!scoringFormat) return;
+  state.scoringFormat = scoringFormat;
+  scoringSelect.value = scoringFormat;
+  refreshSyncStatus();
 }
 
 function formatSyncedAt(sqliteDatetime) {
@@ -151,10 +171,10 @@ function init() {
 
   leagueSelect.addEventListener("change", () => {
     state.leagueId = Number(leagueSelect.value);
+    applyLeagueScoringFormat();
     renderActive();
   });
 
-  const scoringSelect = document.getElementById("scoring-format-select");
   scoringSelect.value = state.scoringFormat;
   scoringSelect.addEventListener("change", () => {
     state.scoringFormat = scoringSelect.value;
