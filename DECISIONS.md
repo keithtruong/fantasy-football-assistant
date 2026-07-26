@@ -6,6 +6,39 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-26 — Backfield role tags (Bellcow / Committee / One-injury-away)
+
+**Context:** Keith wanted three more rank-list tags for RB backfield
+situations — Bellcow (green), Committee (red), One-injury-away (green) —
+with a hand-curated player list per tag pasted directly in chat.
+
+**New `player_role_tags` table, separate from `player_manual_tags`, not an
+extra value on it.** Confirmed with Keith rather than assumed: a role call
+(e.g. "Committee") and the existing target/avoid call (e.g. "Shy-away") are
+independent axes and a player can carry both at once, so combining them into
+one single-value-per-player column would have forced a choice that doesn't
+reflect how Keith actually thinks about these players. The rank list's Team
+cell got a second click-to-cycle target for it (none → Bellcow → Committee →
+One-injury-away → none), parallel to the existing Player Name cell's
+Sleeper/Shy-away cycle.
+
+**Player list stored in a gitignored `data/player_roles_2026.json`, imported
+by a small committed script (`scripts/tag_player_roles.py`), not hardcoded.**
+Same reasoning as the manual sleeper/shy-away notes (2026-07-18 entry): this
+is Keith's own evolving read on each backfield, not stable code, and the
+existing `data/*.json` gitignore rule already covered the right spot for it.
+
+**Matching scoped to position 'RB'** (all three roles are RB-only fantasy
+concepts) and routed through the normal `name_matching.match_player`
+pipeline, unlike the rookie-tag script's standalone matcher — this list is
+~50 hand-picked real players, not thousands of irrelevant entries, so the
+`unresolved_aliases` review queue is exactly the right place for anything
+that doesn't resolve. One entry (James Conner) queued unresolved on the real
+run — he isn't in this project's `players` table yet (outside the current
+rankings pool), not a matching bug.
+
+---
+
 ## 2026-07-26 — Rookie tag
 
 **Context:** Keith wanted a visual "Rookie" tag on the draft rank list, colored

@@ -126,6 +126,16 @@ CREATE TABLE IF NOT EXISTS player_manual_tags (
     tag         TEXT NOT NULL CHECK (tag IN ('sleeper', 'shy_away'))
 );
 
+-- Keith's read on a backfield's touch-share situation — a different axis from
+-- player_manual_tags' target/avoid call (a player can be both e.g. "Shy-away"
+-- and "Committee" at once), so it's a separate table rather than an extra
+-- value on that one. 'one_injury_away' marks a backup who'd inherit
+-- bellcow/near-bellcow work if the starter ahead of them got hurt.
+CREATE TABLE IF NOT EXISTS player_role_tags (
+    player_id   INTEGER PRIMARY KEY REFERENCES players (player_id) ON DELETE CASCADE,
+    tag         TEXT NOT NULL CHECK (tag IN ('bellcow', 'committee', 'one_injury_away'))
+);
+
 -- ============================================================
 -- NFL team reference data (static, one-time-per-season imports)
 -- ============================================================

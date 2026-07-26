@@ -7,6 +7,7 @@ from ffassistant.api import get_db
 players_bp = Blueprint("players", __name__, url_prefix="/api/players")
 
 MANUAL_TAGS = ("sleeper", "shy_away")
+ROLE_TAGS = ("bellcow", "committee", "one_injury_away")
 
 
 @players_bp.get("/search")
@@ -55,6 +56,31 @@ def set_manual_tag(player_id):
         db.execute(
             """
             INSERT INTO player_manual_tags (player_id, tag) VALUES (?, ?)
+            ON CONFLICT (player_id) DO UPDATE SET tag = excluded.tag
+            """,
+            (player_id, tag),
+        )
+    db.commit()
+    return "", 204
+
+
+@players_bp.put("/<int:player_id>/role_tag")
+def set_role_tag(player_id):
+    """Keith's read on a backfield's touch-share situation — independent of the
+    target/avoid manual_tag above (a player can carry both). Set `tag` to null to clear.
+    """
+    db = get_db()
+    payload = request.get_json(silent=True) or {}
+    tag = payload.get("tag")
+
+    if tag is None:
+        db.execute("DELETE FROM player_role_tags WHERE player_id = ?", (player_id,))
+    else:
+        if tag not in ROLE_TAGS:
+            abort(400, description=f"tag must be one of {ROLE_TAGS} or null")
+        db.execute(
+            """
+            INSERT INTO player_role_tags (player_id, tag) VALUES (?, ?)
             ON CONFLICT (player_id) DO UPDATE SET tag = excluded.tag
             """,
             (player_id, tag),

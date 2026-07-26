@@ -16,6 +16,20 @@ function nextManualTag(current) {
   return "sleeper";
 }
 
+function nextRoleTag(current) {
+  if (current === "bellcow") return "committee";
+  if (current === "committee") return "one_injury_away";
+  if (current === "one_injury_away") return null;
+  return "bellcow";
+}
+
+const ROLE_TAG_LABELS = {
+  bellcow: "Bellcow",
+  committee: "Committee",
+  one_injury_away: "One-injury away",
+};
+const ROLE_TAG_KINDS = { bellcow: "positive", committee: "caution", one_injury_away: "positive" };
+
 // Mirrors ffassistant/draft_logic.py's compute_pick_slot exactly — small enough
 // that duplicating it client-side beats round-tripping to the server for it.
 function computePickSlot(pickNumber, teamCount) {
@@ -230,13 +244,17 @@ function buildQuickPicks(available, state, refresh) {
   return wrap;
 }
 
-/** Rookie, Reach/Wait, Sleeper/Shy-away, Hard/Easy SOS, Bye Risk, exposure —
- * computed per row, shown as compact tag chips rather than dedicated
- * always-on columns, since most players won't trip most of these. */
+/** Rookie, Reach/Wait, Sleeper/Shy-away, backfield role, Hard/Easy SOS, Bye
+ * Risk, exposure — computed per row, shown as compact tag chips rather than
+ * dedicated always-on columns, since most players won't trip most of these. */
 function computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId }) {
   const tags = [];
 
   if (player.is_rookie) tags.push({ label: "Rookie", kind: "rookie" });
+
+  if (player.role_tag) {
+    tags.push({ label: ROLE_TAG_LABELS[player.role_tag], kind: ROLE_TAG_KINDS[player.role_tag] });
+  }
 
   if (player.rank != null && player.adp != null) {
     const gap = player.adp - player.rank; // positive -> market has them later than we do
@@ -360,6 +378,12 @@ function buildRankList({
 
     const teamCell = document.createElement("td");
     teamCell.textContent = player.nfl_team || "—";
+    teamCell.className = "player-role-cell";
+    teamCell.title = "Click to cycle backfield role: none → Bellcow → Committee → One-injury away";
+    teamCell.addEventListener("click", async () => {
+      await api.setRoleTag(player.player_id, nextRoleTag(player.role_tag));
+      refresh();
+    });
     row.appendChild(teamCell);
 
     const adpCell = document.createElement("td");

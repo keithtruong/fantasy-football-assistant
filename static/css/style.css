@@ -312,6 +312,14 @@ tr.future-pick-row {
   text-decoration: underline dotted;
 }
 
+.player-role-cell {
+  cursor: pointer;
+}
+
+.player-role-cell:hover {
+  text-decoration: underline dotted;
+}
+
 .position-chip {
   display: inline-block;
   color: #fff;

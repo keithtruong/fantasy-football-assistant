@@ -62,6 +62,12 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ tag }),
     }),
+  setRoleTag: (playerId, tag) =>
+    request(`/api/players/${playerId}/role_tag`, {
+      method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ tag }),
+    }),
   getInSeason: (leagueId, view, season, week) =>
     request(
       `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")

@@ -26,12 +26,14 @@ def get_rankings(league_id):
     rows = db.execute(
         """
         SELECT r.rank, r.tier, r.adp, p.player_id, p.full_name, p.position, p.nfl_team, p.is_rookie,
-               byes.bye_week, sos.playoff_sos_avg_opp_wins, sos.sos_rank, mt.tag AS manual_tag
+               byes.bye_week, sos.playoff_sos_avg_opp_wins, sos.sos_rank, mt.tag AS manual_tag,
+               rt.tag AS role_tag
         FROM rankings r
         JOIN players p ON p.player_id = r.player_id
         LEFT JOIN nfl_team_byes byes ON byes.team = p.nfl_team AND byes.season = r.season
         LEFT JOIN nfl_team_playoff_sos sos ON sos.team = p.nfl_team AND sos.season = r.season
         LEFT JOIN player_manual_tags mt ON mt.player_id = p.player_id
+        LEFT JOIN player_role_tags rt ON rt.player_id = p.player_id
         WHERE r.ranking_type = 'draft' AND r.season = ? AND r.scoring_format = ?
         ORDER BY r.rank
         """,
