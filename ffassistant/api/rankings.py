@@ -25,7 +25,7 @@ def get_rankings(league_id):
 
     rows = db.execute(
         """
-        SELECT r.rank, r.tier, r.adp, p.player_id, p.full_name, p.position, p.nfl_team,
+        SELECT r.rank, r.tier, r.adp, p.player_id, p.full_name, p.position, p.nfl_team, p.is_rookie,
                byes.bye_week, sos.playoff_sos_avg_opp_wins, sos.sos_rank, mt.tag AS manual_tag
         FROM rankings r
         JOIN players p ON p.player_id = r.player_id

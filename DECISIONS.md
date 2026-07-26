@@ -6,6 +6,53 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-26 — Rookie tag
+
+**Context:** Keith wanted a visual "Rookie" tag on the draft rank list, colored
+distinctly from the existing green (positive) and red (caution) tag chips.
+
+**Added `players.is_rookie` as a real column, not a `player_manual_tags`
+entry.** Rookie status is an objective fact about a player, unlike the
+existing `sleeper`/`shy_away` tags in `player_manual_tags`, which are Keith's
+own subjective target/avoid calls (see the 2026-07-18 manual-calls entry).
+Mixing the two would have blurred that table's meaning.
+
+**Sourced from Sleeper's public player data (`years_exp == 0`), not the
+rankings provider.** Sleeper already ships a free, no-auth read endpoint with
+this exact field, and this project already has a connector for it — no need
+to add rookie-detection logic to the (deliberately unnamed, per CLAUDE.md)
+rankings-provider ingestion.
+
+**Matched by name+position directly against this project's own `players`
+table, not through the general `name_matching.match_player` pipeline.** That
+pipeline queues every unresolved name into `unresolved_aliases` for manual
+review — right for a real roster/rankings source, but Sleeper's player list
+includes thousands of practice-squad/inactive names this project has no use
+for; routing all of them through the review queue would have swamped it.
+Built a small standalone matcher in `scripts/tag_rookies.py` instead: index
+Sleeper's data by (normalized name, position), then look up each of this
+project's own (much smaller, ~300-player) rows against it. Ambiguous
+collisions in Sleeper's data (same normalized name/position, conflicting
+rookie status) are left unmatched rather than guessed at, same philosophy as
+the exact/suffix-normalized pipeline elsewhere.
+
+**Known gap: nicknames aren't bridged.** A handful of well-known veterans
+(e.g. a player whose canonical row uses a common nickname Sleeper doesn't)
+came back unmatched on the real data — harmless here since none of them were
+actual rookies, but the same category of limitation as the rest of the
+project's deterministic name matching, which doesn't attempt nickname
+resolution. Left unresolved (printed for manual review) rather than adding
+guessing logic.
+
+**Existing local `data/ffassistant.db` needed a real migration, not just a
+schema.sql edit.** `CREATE TABLE IF NOT EXISTS` only covers brand-new
+databases; added a small `_migrate()` step to `ffassistant/db.py`'s
+`init_db()` that runs `ALTER TABLE ... ADD COLUMN` when the column is
+missing, so the one shared db file picks up new columns without a full
+reinit.
+
+---
+
 ## 2026-07-18 — Team display-name override
 
 **Context:** Keith thinks of teams by the actual owner ("Mike," "Steve"), not

@@ -11,6 +11,8 @@
   --steal: #2f7d52;
   --dot-neutral: #a8b0a4;
   --dot-mine: #cc7a1e;
+  --rookie-bg: #fdeeaa;
+  --rookie-ink: #7a5b00;
   color-scheme: light;
 }
 
@@ -28,6 +30,8 @@
     --steal: #5fae82;
     --dot-neutral: #3d4f5e;
     --dot-mine: #e0973f;
+    --rookie-bg: #3d3208;
+    --rookie-ink: #e0c34a;
     color-scheme: dark;
   }
 }
@@ -337,6 +341,7 @@ tr.future-pick-row {
 .tag-chip.tag-positive { background: var(--filled); color: var(--steal); }
 .tag-chip.tag-caution { background: var(--highlight); color: var(--accent); }
 .tag-chip.tag-neutral { background: var(--line); color: var(--ink-muted); }
+.tag-chip.tag-rookie { background: var(--rookie-bg); color: var(--rookie-ink); }
 
 /* Shared look for the rail's small reference tables (My Roster, ADP Lookahead) */
 table.borderless-table {

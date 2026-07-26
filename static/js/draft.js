@@ -230,11 +230,13 @@ function buildQuickPicks(available, state, refresh) {
   return wrap;
 }
 
-/** Reach/Wait, Sleeper/Shy-away, Hard/Easy SOS, Bye Risk, exposure — computed
- * per row, shown as compact tag chips rather than dedicated always-on columns,
- * since most players won't trip most of these. */
+/** Rookie, Reach/Wait, Sleeper/Shy-away, Hard/Easy SOS, Bye Risk, exposure —
+ * computed per row, shown as compact tag chips rather than dedicated
+ * always-on columns, since most players won't trip most of these. */
 function computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId }) {
   const tags = [];
+
+  if (player.is_rookie) tags.push({ label: "Rookie", kind: "rookie" });
 
   if (player.rank != null && player.adp != null) {
     const gap = player.adp - player.rank; // positive -> market has them later than we do

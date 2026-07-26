@@ -70,7 +70,10 @@ CREATE TABLE IF NOT EXISTS players (
     full_name   TEXT NOT NULL,
     position    TEXT CHECK (position IN ('QB', 'RB', 'WR', 'TE', 'DST', 'K')),
     nfl_team    TEXT,
-    bye_week    INTEGER
+    bye_week    INTEGER,
+    -- First NFL season, per Sleeper's public player data (years_exp = 0).
+    -- Not meaningful for DST rows, which stay 0 (the schema default).
+    is_rookie   INTEGER NOT NULL DEFAULT 0 CHECK (is_rookie IN (0, 1))
 );
 
 -- Per-platform/per-source name variants, resolved to a canonical player_id
