@@ -536,6 +536,40 @@ td.count-zero { color: var(--ink-muted); opacity: 0.55; }
   color: var(--ink-strong);
 }
 
+/* ---- Combined (Draft + Grid) tab ---- */
+
+.combined-layout {
+  display: flex;
+  align-items: start;
+  gap: 28px;
+}
+
+.combined-pane {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.combined-pane-draft {
+  flex-grow: 13;
+}
+
+.combined-pane-grid {
+  flex-grow: 10;
+  border-left: 1px solid var(--line);
+  padding-left: 28px;
+}
+
+.combined-pane-heading {
+  font-size: 14px;
+  margin: 0 0 10px;
+  color: var(--ink-strong);
+}
+
+@media (max-width: 1400px) {
+  .combined-layout { flex-direction: column; }
+  .combined-pane-grid { border-left: none; padding-left: 0; }
+}
+
 /* ---- Rosters tab ---- */
 
 .rosters-scroll {
