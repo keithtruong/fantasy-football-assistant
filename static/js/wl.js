@@ -294,9 +294,9 @@ async function buildAllTimeView() {
       td(league.ties),
       td(league.win_pct != null ? (league.win_pct * 100).toFixed(1) + "%" : "—"),
       td(league.years_played),
-      td(league.firsts),
-      td(league.seconds),
-      td(league.thirds),
+      finishTd(league.firsts, league.first_years),
+      finishTd(league.seconds, league.second_years),
+      finishTd(league.thirds, league.third_years),
       td(league.points_for != null ? league.points_for.toFixed(1) : "—"),
       td(league.points_against != null ? league.points_against.toFixed(1) : "—"),
       td(formatMoney(league.total_buy_in)),
@@ -319,6 +319,17 @@ function formatMoney(n) {
 function td(content) {
   const cell = document.createElement("td");
   cell.textContent = content;
+  return cell;
+}
+
+// A finish count (1st/2nd/3rd) with the specific years on hover — the raw
+// count alone doesn't say when.
+function finishTd(count, years) {
+  const cell = td(count);
+  if (years && years.length) {
+    cell.title = years.join(", ");
+    cell.classList.add("wl-finish-cell");
+  }
   return cell;
 }
 

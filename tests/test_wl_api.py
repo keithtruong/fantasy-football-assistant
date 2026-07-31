@@ -130,6 +130,9 @@ class TestAllTimeApi(WlTestCase):
         self.assertEqual(alpha["years_played"], 2)
         self.assertEqual(alpha["firsts"], 1)
         self.assertEqual(alpha["thirds"], 1)
+        self.assertEqual(alpha["first_years"], [2025])
+        self.assertEqual(alpha["second_years"], [])
+        self.assertEqual(alpha["third_years"], [2024])
         self.assertAlmostEqual(alpha["win_pct"], 18 / 30)
         # PF/PA summed from matchups (only 2025 has any matchup rows seeded).
         self.assertEqual(alpha["points_for"], 215.0)

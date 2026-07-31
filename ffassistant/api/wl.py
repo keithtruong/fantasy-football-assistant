@@ -212,10 +212,26 @@ def get_all_time():
     ).fetchall()
     pf_pa_by_id = {r["league_history_id"]: r for r in pf_pa_rows}
 
+    # Which specific seasons landed each finish, for hover detail on the
+    # 1st/2nd/3rd counts — a bare count doesn't say when.
+    finish_rows = db.execute(
+        """
+        SELECT league_history_id, season, finish_position
+        FROM league_seasons
+        WHERE finish_position IN (1, 2, 3)
+        ORDER BY season
+        """
+    ).fetchall()
+    finish_years_by_id = {}
+    for r in finish_rows:
+        by_position = finish_years_by_id.setdefault(r["league_history_id"], {1: [], 2: [], 3: []})
+        by_position[r["finish_position"]].append(r["season"])
+
     result = []
     for row in season_rows:
         total_games = row["wins"] + row["losses"] + row["ties"]
         pf_pa = pf_pa_by_id.get(row["league_history_id"])
+        finish_years = finish_years_by_id.get(row["league_history_id"], {1: [], 2: [], 3: []})
         result.append(
             {
                 "league_history_id": row["league_history_id"],
@@ -228,6 +244,9 @@ def get_all_time():
                 "firsts": row["firsts"],
                 "seconds": row["seconds"],
                 "thirds": row["thirds"],
+                "first_years": finish_years[1],
+                "second_years": finish_years[2],
+                "third_years": finish_years[3],
                 "points_for": pf_pa["points_for"] if pf_pa else None,
                 "points_against": pf_pa["points_against"] if pf_pa else None,
                 "total_buy_in": row["total_buy_in"],

@@ -320,6 +320,11 @@ tr.future-pick-row {
   text-decoration: underline dotted;
 }
 
+.wl-finish-cell {
+  cursor: help;
+  text-decoration: underline dotted;
+}
+
 .position-chip {
   display: inline-block;
   color: #fff;
