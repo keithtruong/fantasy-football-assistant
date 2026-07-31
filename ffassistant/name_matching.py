@@ -10,9 +10,18 @@ from typing import Optional
 _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
 
+_APOSTROPHES = str.maketrans("", "", "'‘’")
+
+
 def normalize(name: str) -> str:
-    """Lowercase, strip periods/commas, drop trailing generational suffixes, collapse whitespace."""
-    cleaned = re.sub(r"[.,]", "", name).strip().lower()
+    """Lowercase, strip periods/commas/apostrophes, drop trailing generational
+    suffixes, collapse whitespace.
+
+    Apostrophes are stripped rather than unified onto one style because sources
+    disagree on which one they use (straight `'` vs curly `’`) for the same
+    player — e.g. tier-page prose vs. the draft-rankings JSON feed.
+    """
+    cleaned = re.sub(r"[.,]", "", name).translate(_APOSTROPHES).strip().lower()
     tokens = cleaned.split()
     while tokens and tokens[-1] in _SUFFIXES:
         tokens.pop()
