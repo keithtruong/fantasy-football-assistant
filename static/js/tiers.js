@@ -57,19 +57,19 @@ function buildPositionColumn(position, rankings, draftedIds) {
 
   shownTiers.forEach((tierNum, i) => {
     const tierPlayers = players.filter((p) => p.tier === tierNum);
-    column.appendChild(buildTierBlock(tierNum, tierPlayers, draftedIds, i === 0));
+    column.appendChild(buildTierBlock(position, tierNum, tierPlayers, draftedIds, i === 0));
   });
 
   return column;
 }
 
-function buildTierBlock(tierNum, players, draftedIds, isCurrent) {
+function buildTierBlock(position, tierNum, players, draftedIds, isCurrent) {
   const block = document.createElement("div");
   block.className = "tier-block" + (isCurrent ? " tier-block-current" : "");
 
   const label = document.createElement("div");
   label.className = "tier-block-label";
-  label.textContent = `Tier ${tierNum}`;
+  label.textContent = `${position}${tierNum}`;
   block.appendChild(label);
 
   const table = document.createElement("table");

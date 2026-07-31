@@ -373,7 +373,10 @@ function buildRankList({
     row.appendChild(posCell);
 
     const tierCell = document.createElement("td");
-    tierCell.textContent = player.tier != null ? player.tier : "—";
+    // Prefixed with position (e.g. "RB1") since tier numbering resets per
+    // position — a bare "1" is ambiguous once RBs and WRs are interleaved
+    // by overall rank in this list.
+    tierCell.textContent = player.tier != null ? `${player.position}${player.tier}` : "—";
     row.appendChild(tierCell);
 
     const teamCell = document.createElement("td");
