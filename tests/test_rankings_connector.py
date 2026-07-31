@@ -208,6 +208,34 @@ class TestGetTiers(unittest.TestCase):
             ],
         )
 
+    @patch("ffassistant.connectors.rankings.get_rankings_config")
+    @patch("ffassistant.connectors.rankings.requests.get")
+    def test_handles_comma_separated_tier(self, mock_get, mock_config):
+        # A late/deep tier occasionally lists names comma-separated instead of
+        # with the usual "&gt;" delimiter, with no position-rank suffix.
+        mock_config.return_value = {
+            "cookie": "session_name=abc123",
+            "tier_urls": {"TE": "https://example.invalid/te-tiers"},
+        }
+        html_body = make_tier_page_html(
+            ["<b>Tier 7: Terrance Ferguson, Oronde Gadsden II, Cade Otton</b>"]
+        )
+        mock_response = MagicMock()
+        mock_response.text = html_body
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = rankings.get_tiers("TE")
+
+        self.assertEqual(
+            result,
+            [
+                {"full_name": "Terrance Ferguson", "tier": 7},
+                {"full_name": "Oronde Gadsden II", "tier": 7},
+                {"full_name": "Cade Otton", "tier": 7},
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

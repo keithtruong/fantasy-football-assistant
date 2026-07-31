@@ -150,7 +150,7 @@ def get_tiers(position: str) -> list[dict]:
         if not remainder:
             continue  # tier not yet published
 
-        for segment in remainder.split(">"):
+        for segment in re.split(r"[>,]", remainder):
             player_name = _POSITION_RANK_SUFFIX.sub("", segment).strip()
             if player_name:
                 tiers.append({"full_name": player_name, "tier": tier_num})
