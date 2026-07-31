@@ -257,6 +257,43 @@ def get_all_time():
     return jsonify(result)
 
 
+@wl_bp.get("/finishes")
+def get_finishes():
+    """League x year finish-position grid for the All Years tab's history
+    table. Years span every season on record through the current year (so an
+    active league's in-progress season still gets a column). A league with no
+    league_seasons row for a given year (didn't exist yet, or a gap) gets
+    `null` in that cell — same as a row that exists but has no recorded
+    finish_position — since the client renders both as "no data" alike.
+    """
+    db = get_db()
+
+    leagues = db.execute("SELECT league_history_id, name FROM league_history ORDER BY name").fetchall()
+
+    season_bounds = db.execute("SELECT MIN(season) AS mn, MAX(season) AS mx FROM league_seasons").fetchone()
+    min_year = season_bounds["mn"]
+    max_year = max(season_bounds["mx"] or 0, _current_year()) if min_year else _current_year()
+    years = list(range(min_year, max_year + 1)) if min_year else []
+
+    finish_rows = db.execute("SELECT league_history_id, season, finish_position FROM league_seasons").fetchall()
+    finish_by_league = {}
+    for r in finish_rows:
+        finish_by_league.setdefault(r["league_history_id"], {})[r["season"]] = r["finish_position"]
+
+    result_leagues = []
+    for league in leagues:
+        by_year = finish_by_league.get(league["league_history_id"], {})
+        result_leagues.append(
+            {
+                "league_history_id": league["league_history_id"],
+                "name": league["name"],
+                "finishes": {str(year): by_year.get(year) for year in years},
+            }
+        )
+
+    return jsonify({"years": years, "leagues": result_leagues})
+
+
 @wl_bp.put("/matchups")
 def put_matchup():
     """Manual entry/edit for a single week's result — the baseline workflow

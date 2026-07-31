@@ -1,3 +1,4 @@
+import datetime
 import sqlite3
 
 from tests.test_api import ApiTestCase
@@ -145,6 +146,25 @@ class TestAllTimeApi(WlTestCase):
         beta = next(r for r in resp.get_json() if r["name"] == "Beta")
         self.assertEqual(beta["years_played"], 0)
         self.assertIsNone(beta["win_pct"])
+
+
+class TestFinishesApi(WlTestCase):
+    def test_years_span_data_range_through_current_year(self):
+        resp = self.client.get("/api/wl/finishes")
+        data = resp.get_json()
+        current_year = datetime.date.today().year
+        self.assertEqual(data["years"], list(range(2024, current_year + 1)))
+
+    def test_finish_grid_by_league_and_year(self):
+        resp = self.client.get("/api/wl/finishes")
+        data = resp.get_json()
+        alpha = next(l for l in data["leagues"] if l["name"] == "Alpha")
+        beta = next(l for l in data["leagues"] if l["name"] == "Beta")
+
+        self.assertEqual(alpha["finishes"]["2024"], 3)
+        self.assertEqual(alpha["finishes"]["2025"], 1)
+        # Beta has no league_seasons rows at all -- every year is null.
+        self.assertTrue(all(v is None for v in beta["finishes"].values()))
 
 
 class TestPutMatchupApi(WlTestCase):

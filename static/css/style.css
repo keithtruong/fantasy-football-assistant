@@ -13,6 +13,12 @@
   --dot-mine: #cc7a1e;
   --rookie-bg: #fdeeaa;
   --rookie-ink: #7a5b00;
+  --gold-bg: #fbe8a6;
+  --gold-ink: #7a5b00;
+  --silver-bg: #e2e5e9;
+  --silver-ink: #4a4f57;
+  --bronze-bg: #eecfae;
+  --bronze-ink: #7a431a;
   color-scheme: light;
 }
 
@@ -32,6 +38,12 @@
     --dot-mine: #e0973f;
     --rookie-bg: #3d3208;
     --rookie-ink: #e0c34a;
+    --gold-bg: #4a3b12;
+    --gold-ink: #f0d060;
+    --silver-bg: #33383f;
+    --silver-ink: #d3d7dc;
+    --bronze-bg: #3d2712;
+    --bronze-ink: #dda06a;
     color-scheme: dark;
   }
 }
@@ -1289,6 +1301,64 @@ table.wl-leagues-table td:not(:first-child),
 table.wl-close-games-table td:not(:first-child),
 table.wl-all-time-table td:not(:first-child) {
   font-variant-numeric: tabular-nums;
+}
+
+.wl-all-time-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.wl-finishes-scroll {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.wl-finishes-scroll h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+}
+
+table.wl-finishes-table {
+  width: auto;
+}
+
+table.wl-finishes-table td:not(:first-child),
+table.wl-finishes-table th:not(:first-child) {
+  text-align: center;
+  min-width: 34px;
+}
+
+td.wl-finish-gold {
+  background: var(--gold-bg);
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+td.wl-finish-silver {
+  background: var(--silver-bg);
+  color: var(--silver-ink);
+  font-weight: 700;
+}
+
+td.wl-finish-bronze {
+  background: var(--bronze-bg);
+  color: var(--bronze-ink);
+  font-weight: 700;
+}
+
+/* No season played (or no finish recorded) that year — a diagonal hatch
+   distinguishes it from an actual 4th-or-worse finish, which stays blank
+   background with a plain number. */
+td.wl-finish-none {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--line),
+    var(--line) 3px,
+    transparent 3px,
+    transparent 8px
+  );
 }
 
 .wl-close-games-wrap {

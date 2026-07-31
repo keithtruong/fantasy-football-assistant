@@ -275,7 +275,9 @@ function buildCloseGamesTable(title, games, outcomeClass) {
 // ---- All Years: one rollup row per league, spans every season ----
 
 async function buildAllTimeView() {
-  const leagues = await api.getWlAllTime();
+  const [leagues, finishes] = await Promise.all([api.getWlAllTime(), api.getWlFinishes()]);
+
+  const wrap = el("div", "wl-all-time-wrap");
 
   const table = el("table", "wl-data-table wl-all-time-table");
   const thead = document.createElement("thead");
@@ -305,7 +307,59 @@ async function buildAllTimeView() {
     tbody.appendChild(row);
   }
   table.appendChild(tbody);
-  return table;
+  wrap.appendChild(table);
+
+  wrap.appendChild(buildFinishesGrid(finishes));
+  return wrap;
+}
+
+// ---- Finishes grid: league x year, gold/silver/bronze for 1st/2nd/3rd ----
+
+function buildFinishesGrid(finishes) {
+  const scrollWrap = el("div", "wl-finishes-scroll");
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Finishes by Year";
+  scrollWrap.appendChild(heading);
+
+  const table = el("table", "wl-data-table wl-finishes-table");
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headRow.appendChild(document.createElement("th")).textContent = "League";
+  for (const year of finishes.years) {
+    const th = document.createElement("th");
+    th.textContent = year;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const league of finishes.leagues) {
+    const row = document.createElement("tr");
+    row.appendChild(td(league.name));
+    for (const year of finishes.years) {
+      row.appendChild(finishCell(league.finishes[year]));
+    }
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+  scrollWrap.appendChild(table);
+
+  return scrollWrap;
+}
+
+function finishCell(place) {
+  const cell = document.createElement("td");
+  if (place == null) {
+    cell.textContent = "";
+    cell.className = "wl-finish-none";
+    return cell;
+  }
+  cell.textContent = place;
+  cell.className =
+    place === 1 ? "wl-finish-gold" : place === 2 ? "wl-finish-silver" : place === 3 ? "wl-finish-bronze" : "";
+  return cell;
 }
 
 function formatSigned(n) {

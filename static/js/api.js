@@ -79,6 +79,7 @@ export const api = {
   getWlLeagues: (year) => request(`/api/wl/leagues?year=${year}`),
   getWlCloseGames: (year) => request(`/api/wl/close_games?year=${year}`),
   getWlAllTime: () => request("/api/wl/all_time"),
+  getWlFinishes: () => request("/api/wl/finishes"),
   putWlMatchup: (payload) =>
     request("/api/wl/matchups", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(payload) }),
   syncRankings: (season, scoringFormat) =>
