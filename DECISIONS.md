@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-07-30/31 — Tier display and matching fixes, W-L All Years finishes grid
+
+**Context:** A batch of small fixes and additions that came out of using the draft tool and W-L tracker against real data — a tier page with an unusual separator, a curly-vs-straight apostrophe mismatch, ambiguous tier numbers in the mixed-position rank list, and two W-L All Years follow-ups.
+
+**Apostrophe normalization added to player-name matching.** Tier pages render player names with a curly apostrophe while the draft-rankings feed uses a straight one, so names like Ja'Marr Chase and De'Von Achane were falling through to `unresolved_aliases` on tier lookups despite being an obvious match. Both apostrophe styles are now stripped/normalized before comparison in `name_matching.py`, alongside the existing suffix-normalization step rather than as a separate matching pass.
+
+**Tier-page parser now handles comma-separated player lists, not just the usual `>` separator.** One deep TE tier used commas between names instead of the `>` delimiter the rest of the source uses, which was collapsing the whole tier into a single bogus concatenated "name" instead of splitting it into individual players. The parser in `connectors/rankings.py` now splits on either separator.
+
+**Tier numbers in the Draft tab's rank list are now prefixed with position (RB1, WR1, ...) instead of shown bare.** Tier numbering resets per position, so a bare "1" in a list that mixes positions together was ambiguous between, say, an RB1 and a WR1. Applied in both `draft.js` and `tiers.js` so the two views stay consistent.
+
+**W-L All Years 1st/2nd/3rd counts now show the specific finish years on hover**, not just a bare count. `/api/wl/all_time` returns the years per finish position, surfaced as a hover tooltip — small addition, but the count alone didn't say *when*, which matters for a 13-year history.
+
+**Added a league x year finishes grid to the W-L All Years tab**, via a new `/api/wl/finishes` endpoint returning every league's finish position for every year in the data range through the current year. Rendered as a table below the existing rollup, with gold/silver/bronze backgrounds for 1st/2nd/3rd, plain for 4th+, and a diagonal hatch for years a league has no recorded season — the same conditional-formatting instinct carried over from the legacy spreadsheet elsewhere in this project, applied here to give an at-a-glance view of finish history per league that the rollup's aggregate counts alone didn't show.
+
+---
+
 ## 2026-07-26 — Backfield role tags (Bellcow / Committee / One-injury-away)
 
 **Context:** Keith wanted three more rank-list tags for RB backfield
