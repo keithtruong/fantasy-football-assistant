@@ -90,6 +90,10 @@ Draft is the most time-sensitive (drafts happen in August) and the most fully sp
 7. League settings admin.
 8. Exposure and W-L tracker (least time-pressured, can trail the rest).
 
+## Session workflow
+
+- Before ending a session, if meaningful progress was made: update the row for "Keith's FF Assistant" in the Notion database "Project Status Tracker." Set Last Updated to today, append one line to Recent Progress (don't rewrite the whole log — keep only the latest 2-3 entries), and revise Open Tasks to reflect what's actually still outstanding. Skip this if the session was purely exploratory with no decisions or completed work.
+
 ## Where to look for more
 
 - `DECISIONS.md` — full chronological log of every decision above, with context, rationale, and alternatives considered. Written in portfolio-readable style since it doubles as a work sample.
