@@ -9,6 +9,7 @@
   --filled: #e3f1e8;
   --highlight: #fff4d9;
   --steal: #2f7d52;
+  --tough: #f6dbdb;
   --dot-neutral: #a8b0a4;
   --dot-mine: #cc7a1e;
   --rookie-bg: #fdeeaa;
@@ -34,6 +35,7 @@
     --filled: #16241c;
     --highlight: #2a2013;
     --steal: #5fae82;
+    --tough: #3a1c1c;
     --dot-neutral: #3d4f5e;
     --dot-mine: #e0973f;
     --rookie-bg: #3d3208;
@@ -546,6 +548,34 @@ td.count-zero { color: var(--ink-muted); opacity: 0.55; }
 .grid-position-chip { margin-right: 4px; }
 
 .position-summary-wrap { margin-top: 20px; }
+
+/* ---- Schedule tab ---- */
+
+table.schedule-grid {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+table.schedule-grid th, table.schedule-grid td {
+  border: 1px solid var(--line);
+  padding: 5px 8px;
+  text-align: center;
+}
+
+table.schedule-grid th:first-child, table.schedule-grid td.schedule-team-label {
+  text-align: left;
+}
+
+.schedule-team-label {
+  font-weight: 600;
+  background: var(--bg);
+}
+
+.schedule-cell-empty { background: var(--bg); }
+.schedule-cell-bye { color: var(--ink-muted); opacity: 0.55; }
+.schedule-cell-easy { background: var(--filled); }
+.schedule-cell-hard { background: var(--tough); }
 
 .position-summary-wrap h3 {
   font-size: 14px;

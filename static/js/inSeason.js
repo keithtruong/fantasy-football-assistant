@@ -1,11 +1,17 @@
 import { api } from "./api.js";
 import { positionColor } from "./positions.js";
+import { renderScheduleTab } from "./schedule.js";
 
 const WEEKLY_POSITIONS = ["QB", "RB", "WR", "TE", "DST", "K"];
 const ROS_POSITIONS = ["QB", "RB", "WR", "TE"];
 
 export async function renderInSeasonView(container, state) {
-  const view = state.inSeasonTab; // "weekly" | "ros"
+  const view = state.inSeasonTab; // "weekly" | "ros" | "schedule"
+
+  if (view === "schedule") {
+    await renderScheduleTab(container, state);
+    return;
+  }
 
   if (view === "weekly" && !state.week) {
     const prompt = document.createElement("p");

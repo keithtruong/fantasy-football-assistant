@@ -73,6 +73,7 @@ export const api = {
       `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")
     ),
   getExposure: () => request("/api/exposure"),
+  getSchedule: (season) => request(`/api/schedule?season=${season}`),
   getWlLeagueHistory: () => request("/api/wl/league_history"),
   getWlGames: (year) => request(`/api/wl/games?year=${year}`),
   getWlWeekly: (year) => request(`/api/wl/weekly?year=${year}`),

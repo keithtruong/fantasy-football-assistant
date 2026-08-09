@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts.import_byes import import_byes
 from scripts.import_playoff_sos import import_playoff_sos
+from scripts.import_schedule import import_schedule
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "ffassistant" / "schema.sql"
 
@@ -62,6 +63,34 @@ class TestImportByes(unittest.TestCase):
 
             import_byes(csv_path, season=2026, conn=conn)
             total = conn.execute("SELECT COUNT(*) AS c FROM nfl_team_byes").fetchone()["c"]
+            self.assertEqual(total, 3)
+
+
+class TestImportSchedule(unittest.TestCase):
+    def test_imports_rows_and_is_idempotent_on_resync(self):
+        conn = make_conn()
+        csv_content = (
+            "team,week,opponent,is_home\n"
+            "BUF,1,ARI,1\n"
+            "ARI,1,BUF,0\n"
+            "BUF,2,NYJ,0\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "schedule.csv"
+            csv_path.write_text(csv_content)
+
+            count = import_schedule(csv_path, season=2026, conn=conn)
+            self.assertEqual(count, 3)
+
+            row = conn.execute(
+                "SELECT * FROM nfl_team_schedule WHERE team = 'BUF' AND week = 1"
+            ).fetchone()
+            self.assertEqual(row["opponent"], "ARI")
+            self.assertEqual(row["is_home"], 1)
+
+            # Re-import should replace, not duplicate.
+            import_schedule(csv_path, season=2026, conn=conn)
+            total = conn.execute("SELECT COUNT(*) AS c FROM nfl_team_schedule").fetchone()["c"]
             self.assertEqual(total, 3)
 
 

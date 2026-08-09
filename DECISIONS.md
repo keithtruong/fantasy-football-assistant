@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-09 — Schedule tab in the Draft tool
+
+**Context:** Keith wanted a full-season schedule grid added to the draft tool — teams down the side, weeks 1-17 across the top, opponent shown with the usual `@` prefix for away games, and the cell background tinted to flag easy vs. tough matchups at a glance during a draft.
+
+**New `nfl_team_schedule` table holds weeks 1-17 opponent/home-away only — bye weeks stay in the existing `nfl_team_byes` table rather than being duplicated into both.** The Schedule tab's API endpoint joins the two at read time. Loaded the same way as the existing `nfl_team_byes`/`nfl_team_playoff_sos` reference tables: a static per-season CSV (`data/nfl_schedule_2026.csv`) sourced from the public schedule release, imported by a new one-time script (`scripts/import_schedule.py`). Before trusting the fetched data, cross-checked its derived bye week for all 32 teams against the already-in-use `bye_weeks_2026.csv` — all 32 matched, which was enough confidence to proceed without a second independent source.
+
+**Matchup difficulty (green/red cell backgrounds) reuses the existing "Hard/Easy SOS" convention instead of inventing a new threshold** — rank all 32 teams by season win total (`nfl_team_playoff_sos.own_implied_wins`, already in the DB) and flag the top 8 (toughest opponents) red, bottom 8 (easiest) green, leaving the middle 16 neutral. This is the same `SOS_NOTABLE_RANK = 8` cutoff `draft.js` already uses for the Hard/Easy SOS tags on the main Draft tab, just applied per-week across the full season instead of only to weeks 15-17. The rank is computed at request time in the API rather than stored, since it only depends on the season-wide win-total list, not which week's matchup is being looked at.
+
+**Schedule tab sits in the Draft tool's tab bar (Draft | Grid | Combined | Tiers | Rosters | Schedule) even though its data isn't league-scoped**, same tradeoff already accepted for Exposure being cross-league — not worth restructuring the app's per-section league-gating for one tab when a league is effectively always selected anyway once inside the Draft tool.
+
+---
+
 ## 2026-07-30/31 — Tier display and matching fixes, W-L All Years finishes grid
 
 **Context:** A batch of small fixes and additions that came out of using the draft tool and W-L tracker against real data — a tier page with an unusual separator, a curly-vs-straight apostrophe mismatch, ambiguous tier numbers in the mixed-position rank list, and two W-L All Years follow-ups.

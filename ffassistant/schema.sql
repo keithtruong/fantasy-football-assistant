@@ -167,6 +167,20 @@ CREATE TABLE IF NOT EXISTS nfl_team_playoff_sos (
     PRIMARY KEY (season, team)
 );
 
+-- Full-season opponent schedule (weeks 1-17), one row per team per week it
+-- plays — bye weeks have no row here (join nfl_team_byes for that). Opponent
+-- difficulty is derived at read time from nfl_team_playoff_sos.own_implied_wins
+-- rather than stored here, since it's the same win-total value regardless of
+-- which week's matchup you're looking at.
+CREATE TABLE IF NOT EXISTS nfl_team_schedule (
+    season      INTEGER NOT NULL,
+    team        TEXT NOT NULL,
+    week        INTEGER NOT NULL,
+    opponent    TEXT NOT NULL,
+    is_home     INTEGER NOT NULL CHECK (is_home IN (0, 1)),
+    PRIMARY KEY (season, team, week)
+);
+
 -- ============================================================
 -- Rankings (draft / weekly / rest-of-season + editorial waiver suggestions)
 -- ============================================================
