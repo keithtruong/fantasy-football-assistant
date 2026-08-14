@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-08-13 — Good/Bad Offense tag from average implied team totals
+
+**Context:** Keith wanted a way to tag offenses as good or bad for the draft, based on average implied team total (a proxy for how many points a team's offense is expected to score, derived from game-line odds) across the season.
+
+**New `nfl_team_implied_totals` table holds each team's average implied total for weeks 1-17, the best-ball regular season (1-14), and the fantasy playoffs (15-17)** — same shape and per-season CSV-import pattern as the existing `nfl_team_playoff_sos` table (`data/implied_totals_2026.csv` + `scripts/import_implied_totals.py`, mirroring `import_playoff_sos.py`). `offense_rank` (1 = highest-scoring offense of the 32) is precomputed directly in the source CSV rather than derived at read time, same convention already used for `nfl_team_playoff_sos.sos_rank`.
+
+**Rank list gets a new Good/Bad Offense tag, reusing the existing Hard/Easy SOS top/bottom-8-of-32 convention (`OFFENSE_NOTABLE_RANK = 8` in `draft.js`)** rather than inventing a new threshold — top 8 offenses by implied total get "Good Offense" (positive), bottom 8 get "Bad Offense" (caution), joined onto the rankings API response by `nfl_team` the same way `sos_rank` already is.
+
+**Source stays unnamed, same as the playoff-SOS odds data** — per the confidentiality rule (see CLAUDE.md), the specific site the numbers came from isn't referenced anywhere committed to the repo, only "game-line odds" generically.
+
+---
+
 ## 2026-08-09 — Schedule tab in the Draft tool
 
 **Context:** Keith wanted a full-season schedule grid added to the draft tool — teams down the side, weeks 1-17 across the top, opponent shown with the usual `@` prefix for away games, and the cell background tinted to flag easy vs. tough matchups at a glance during a draft.

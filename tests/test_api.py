@@ -65,6 +65,10 @@ class ApiTestCase(unittest.TestCase):
             "INSERT INTO rankings (player_id, ranking_type, season, scoring_format, rank) VALUES (3, 'draft', 2026, 'full_ppr', 2)"
         )
         conn.execute("INSERT INTO nfl_team_byes (season, team, bye_week) VALUES (2026, 'BUF', 7)")
+        conn.execute(
+            "INSERT INTO nfl_team_implied_totals (season, team, implied_tt_full, offense_rank) "
+            "VALUES (2026, 'BUF', 26.09, 2)"
+        )
         conn.commit()
 
 
@@ -337,6 +341,8 @@ class TestRankingsApi(ApiTestCase):
         self.assertEqual([r["full_name"] for r in data], ["Saquon Barkley", "Bijan Robinson", "Josh Allen"])
         allen = next(r for r in data if r["full_name"] == "Josh Allen")
         self.assertEqual(allen["bye_week"], 7)
+        self.assertEqual(allen["offense_rank"], 2)
+        self.assertEqual(allen["implied_tt_full"], 26.09)
 
     def test_includes_already_drafted_players(self):
         # Rankings always returns the full pool — the client filters "available"

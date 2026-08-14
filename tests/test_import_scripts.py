@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.import_byes import import_byes
+from scripts.import_implied_totals import import_implied_totals
 from scripts.import_playoff_sos import import_playoff_sos
 from scripts.import_schedule import import_schedule
 
@@ -44,6 +45,34 @@ class TestImportPlayoffSos(unittest.TestCase):
             # Re-import should replace, not duplicate.
             import_playoff_sos(csv_path, season=2026, conn=conn)
             total = conn.execute("SELECT COUNT(*) AS c FROM nfl_team_playoff_sos").fetchone()["c"]
+            self.assertEqual(total, 2)
+
+
+class TestImportImpliedTotals(unittest.TestCase):
+    def test_imports_rows_and_is_idempotent_on_resync(self):
+        conn = make_conn()
+        csv_content = (
+            "offense_rank,team,team_name,implied_tt_full,implied_tt_reg,implied_tt_playoffs\n"
+            "1,LAR,Los Angeles Rams,26.46,26.75,26.00\n"
+            "32,ARI,Arizona Cardinals,18.47,18.15,20.00\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "implied_totals.csv"
+            csv_path.write_text(csv_content)
+
+            count = import_implied_totals(csv_path, season=2026, conn=conn)
+            self.assertEqual(count, 2)
+
+            row = conn.execute(
+                "SELECT * FROM nfl_team_implied_totals WHERE team = 'LAR'"
+            ).fetchone()
+            self.assertEqual(row["offense_rank"], 1)
+            self.assertEqual(row["implied_tt_full"], 26.46)
+            self.assertEqual(row["implied_tt_playoffs"], 26.00)
+
+            # Re-import should replace, not duplicate.
+            import_implied_totals(csv_path, season=2026, conn=conn)
+            total = conn.execute("SELECT COUNT(*) AS c FROM nfl_team_implied_totals").fetchone()["c"]
             self.assertEqual(total, 2)
 
 

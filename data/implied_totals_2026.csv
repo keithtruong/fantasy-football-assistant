@@ -1,0 +1,33 @@
+offense_rank,team,team_name,implied_tt_full,implied_tt_reg,implied_tt_playoffs
+1,LAR,Los Angeles Rams,26.46,26.75,26.00
+2,BUF,Buffalo Bills,26.09,25.98,26.33
+3,DET,Detroit Lions,26.07,26.60,25.00
+4,CIN,Cincinnati Bengals,25.94,25.92,26.17
+5,BAL,Baltimore Ravens,25.90,26.17,25.17
+6,DAL,Dallas Cowboys,25.74,25.73,25.83
+7,SF,San Francisco 49ers,25.13,25.60,22.67
+8,GB,Green Bay Packers,24.87,24.94,24.50
+9,SEA,Seattle Seahawks,24.76,25.38,23.17
+10,CHI,Chicago Bears,24.50,24.73,24.67
+11,KC,Kansas City Chiefs,24.03,24.12,23.50
+12,PHI,Philadelphia Eagles,23.97,24.52,22.17
+13,LAC,Los Angeles Chargers,23.76,23.83,24.75
+14,NE,New England Patriots,23.76,23.81,22.67
+15,IND,Indianapolis Colts,23.37,23.13,24.17
+16,WAS,Washington Commanders,23.32,23.31,23.17
+17,JAX,Jacksonville Jaguars,23.28,23.27,23.58
+18,TB,Tampa Bay Buccaneers,23.28,23.29,23.50
+19,HOU,Houston Texans,22.76,23.15,20.92
+20,MIN,Minnesota Vikings,22.47,22.35,23.00
+21,DEN,Denver Broncos,22.40,22.60,21.83
+22,NYG,New York Giants,22.06,22.25,22.17
+23,NO,New Orleans Saints,21.50,21.31,22.50
+24,PIT,Pittsburgh Steelers,21.47,21.54,22.00
+25,ATL,Atlanta Falcons,21.18,21.08,22.17
+26,TEN,Tennessee Titans,20.69,20.88,21.33
+27,CAR,Carolina Panthers,20.66,20.71,20.00
+28,LV,Las Vegas Raiders,19.16,19.02,20.83
+29,MIA,Miami Dolphins,19.06,19.37,18.75
+30,CLE,Cleveland Browns,18.78,18.87,18.67
+31,NYJ,New York Jets,18.57,18.58,19.17
+32,ARI,Arizona Cardinals,18.47,18.15,20.00

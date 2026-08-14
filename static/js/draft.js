@@ -8,6 +8,7 @@ const CORE_POSITIONS = ["QB", "RB", "WR", "TE", "DST", "K"];
 // signal, not every minor disagreement between sources.
 const REACH_WAIT_ADP_GAP = 12; // rank this many spots off ADP (~a round) -> "Wait"/"Reach"
 const SOS_NOTABLE_RANK = 8; // top/bottom 8 of 32 teams -> "Hard SOS" / "Easy SOS"
+const OFFENSE_NOTABLE_RANK = 8; // top/bottom 8 of 32 teams by implied team total -> "Good Offense" / "Bad Offense"
 const BYE_RISK_STACK_COUNT = 2; // 2+ same-position rostered players sharing a bye
 
 function nextManualTag(current) {
@@ -244,9 +245,10 @@ function buildQuickPicks(available, state, refresh) {
   return wrap;
 }
 
-/** Rookie, Reach/Wait, Sleeper/Shy-away, backfield role, Hard/Easy SOS, Bye
- * Risk, exposure — computed per row, shown as compact tag chips rather than
- * dedicated always-on columns, since most players won't trip most of these. */
+/** Rookie, Reach/Wait, Sleeper/Shy-away, backfield role, Hard/Easy SOS,
+ * Good/Bad Offense, Bye Risk, exposure — computed per row, shown as compact
+ * tag chips rather than dedicated always-on columns, since most players
+ * won't trip most of these. */
 function computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId }) {
   const tags = [];
 
@@ -270,6 +272,11 @@ function computeTags(player, { myTeam, rankingsByPlayerId, exposureByPlayerId })
   if (player.sos_rank != null) {
     if (player.sos_rank <= SOS_NOTABLE_RANK) tags.push({ label: "Hard SOS", kind: "caution" });
     else if (player.sos_rank > 32 - SOS_NOTABLE_RANK) tags.push({ label: "Easy SOS", kind: "positive" });
+  }
+
+  if (player.offense_rank != null) {
+    if (player.offense_rank <= OFFENSE_NOTABLE_RANK) tags.push({ label: "Good Offense", kind: "positive" });
+    else if (player.offense_rank > 32 - OFFENSE_NOTABLE_RANK) tags.push({ label: "Bad Offense", kind: "caution" });
   }
 
   if (player.bye_week != null && myTeam) {

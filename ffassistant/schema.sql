@@ -167,6 +167,21 @@ CREATE TABLE IF NOT EXISTS nfl_team_playoff_sos (
     PRIMARY KEY (season, team)
 );
 
+-- Average implied team total (a proxy for offense quality), derived from
+-- game-line odds the same way nfl_team_playoff_sos is — see DECISIONS.md.
+-- offense_rank is precomputed in the source CSV (1 = highest-scoring
+-- offense among all 32 teams), same convention as sos_rank above, so the
+-- Draft tab's Good/Bad Offense tag doesn't need a separate read-time pass.
+CREATE TABLE IF NOT EXISTS nfl_team_implied_totals (
+    season                  INTEGER NOT NULL,
+    team                    TEXT NOT NULL,
+    implied_tt_full         REAL,   -- weeks 1-17 average
+    implied_tt_reg          REAL,   -- weeks 1-14 (best ball regular season)
+    implied_tt_playoffs     REAL,   -- weeks 15-17 (fantasy playoffs)
+    offense_rank            INTEGER,
+    PRIMARY KEY (season, team)
+);
+
 -- Full-season opponent schedule (weeks 1-17), one row per team per week it
 -- plays — bye weeks have no row here (join nfl_team_byes for that). Opponent
 -- difficulty is derived at read time from nfl_team_playoff_sos.own_implied_wins
