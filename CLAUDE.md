@@ -77,6 +77,18 @@ Based on the legacy W-L 2025.xlsx (13 years of history back to 2013). Year-scope
 - Live draft-polling feasibility per platform is unverified — treat as a separate investigation, not a dependency for the core draft tool.
 - Player injury/status field availability per platform (needed for the in-season "worst players" flagging) is unverified — check during connector build.
 
+## Year-over-year maintenance checklist
+
+Almost every module above has some yearly-refresh dependency baked into its design. Run through this before each new NFL season (and update it as the actual build reveals more of these than are listed here today):
+
+- **Credentials & config:** rotate/refresh ESPN SWID + espn_s2 session cookies (they expire) in the local secrets store. Re-verify per-platform league IDs in the local config — some platforms reissue a new league ID on renewal, others keep the same one across years. Confirm the rankings provider's URLs in the local gitignored config still resolve for the new season; provider URL patterns can shift year to year even when the provider itself doesn't.
+- **League settings:** re-confirm each of the 10 leagues' team count, scoring rules, roster construction/starters-per-position, and draft rounds against the platform for the new season — any of these can change year to year even for a "same" league. Re-confirm draft order/keeper rules per league where applicable.
+- **Player data:** refresh the canonical player table with new rookies and reconcile retired/departed players. Expect new manual-override entries in the name-matching table — rookies are the most common source. Refresh bye weeks and playoff strength-of-schedule inputs from the new NFL schedule (feeds the draft tool's SOS tag and in-season prep).
+- **Draft tool:** pull the new season's ADP data before draft day (feeds the ADP lookahead panel) and ingest the new season's draft rankings from the rankings provider. Confirm how each league's prior Draft/Grid/Rosters data is handled for the new draft (archived vs. overwritten) once that persistence behavior is actually built.
+- **In-season tool:** no standing yearly action beyond the rankings-ingestion refresh above — Weekly/ROS views read whatever season is current by definition.
+- **Exposure:** once built, confirm it recomputes cleanly off the new season's rosters post-draft — keeper leagues may carry some exposure over from the prior year, worth a specific check.
+- **W-L tracker:** add the new year to the year picker and create its "Games" card per league once week 1 results exist. PF/PA entry stays manual until the in-season automation candidate mentioned above is built.
+
 ## Suggested build order
 
 Draft is the most time-sensitive (drafts happen in August) and the most fully specified, so it's the priority. Roughly:
@@ -92,7 +104,7 @@ Draft is the most time-sensitive (drafts happen in August) and the most fully sp
 
 ## Session workflow
 
-- Before ending a session, if meaningful progress was made: update the row for "Keith's FF Assistant" in the Notion database "Project Status Tracker." Set Last Updated to today, append one line to Recent Progress (don't rewrite the whole log — keep only the latest 2-3 entries), and revise Open Tasks to reflect what's actually still outstanding. Skip this if the session was purely exploratory with no decisions or completed work.
+- Keith closes the window without a sign-off, so there's no reliable "session end" signal to wait for. Instead, update proactively at natural checkpoints — right after a real decision is made or a chunk of work is completed, not deferred to a session boundary that may never come. Update the row for "Keith's FF Assistant" in the Notion database "Project Status Tracker": set Last Updated to today, append one line to Recent Progress (don't rewrite the whole log — keep only the latest 2-3 entries), and revise Open Tasks to reflect what's actually still outstanding. Skip this for purely exploratory work with no decisions or completed changes.
 
 ## Where to look for more
 
