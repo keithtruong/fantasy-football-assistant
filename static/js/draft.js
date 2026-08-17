@@ -333,7 +333,7 @@ function buildRankList({
   const table = el("table", "rank-list");
   const thead = document.createElement("thead");
   thead.innerHTML =
-    "<tr><th>Rank</th><th>Player Name</th><th>Position</th><th>Tier</th><th>Team</th><th>ADP</th><th>Tags</th></tr>";
+    "<tr><th>Rank</th><th>Player Name</th><th>Position</th><th>Tier</th><th>Pos Rank</th><th>Team</th><th>ADP</th><th>Tags</th></tr>";
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
@@ -344,6 +344,12 @@ function buildRankList({
   const visiblePlayers = state.draftPositionFilter.size
     ? available.filter((p) => state.draftPositionFilter.has(p.position))
     : available;
+
+  // `available` already excludes drafted players, so the lowest tier number
+  // remaining per position is exactly the Tiers pane's "current tier" — computed
+  // from the full available pool, not visiblePlayers, so it doesn't shift when
+  // the position-chip filter is toggled.
+  const currentTierByPosition = computeCurrentTierByPosition(available);
 
   for (const player of visiblePlayers) {
     const row = document.createElement("tr");
@@ -384,7 +390,16 @@ function buildRankList({
     // position — a bare "1" is ambiguous once RBs and WRs are interleaved
     // by overall rank in this list.
     tierCell.textContent = player.tier != null ? `${player.position}${player.tier}` : "—";
+    // Matches the Tiers pane's current-tier highlight: the lowest-numbered
+    // tier at this position that still has an available player.
+    if (player.tier != null && player.tier === currentTierByPosition[player.position]) {
+      tierCell.classList.add("tier-current");
+    }
     row.appendChild(tierCell);
+
+    const posRankCell = document.createElement("td");
+    posRankCell.textContent = player.pos_rank != null ? `${player.position}${player.pos_rank}` : "—";
+    row.appendChild(posRankCell);
 
     const teamCell = document.createElement("td");
     teamCell.textContent = player.nfl_team || "—";
@@ -415,6 +430,17 @@ function buildRankList({
   }
   table.appendChild(tbody);
   return table;
+}
+
+function computeCurrentTierByPosition(players) {
+  const result = {};
+  for (const p of players) {
+    if (p.tier == null) continue;
+    if (result[p.position] == null || p.tier < result[p.position]) {
+      result[p.position] = p.tier;
+    }
+  }
+  return result;
 }
 
 // ---- Rail: my roster, positions filled, ADP lookahead ----
@@ -548,7 +574,7 @@ function buildTeamMatrix({ teams, rosterSlotCounts, myTeam, teamCount, draftData
 function buildAdpLookahead({ available }) {
   const table = el("table", "adp-lookahead-table borderless-table");
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th>Player</th><th>Pos</th><th>ADP</th><th>Your Rank</th></tr>";
+  thead.innerHTML = "<tr><th>Player</th><th>Pos</th><th>ADP</th><th>Your Rank</th><th>Pos Rank</th></tr>";
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
@@ -576,7 +602,9 @@ function buildAdpLookahead({ available }) {
     adpCell.textContent = player.adp.toFixed(1);
     const rankCell = document.createElement("td");
     rankCell.textContent = player.rank;
-    row.append(nameCell, posCell, adpCell, rankCell);
+    const posRankCell = document.createElement("td");
+    posRankCell.textContent = player.pos_rank != null ? `${player.position}${player.pos_rank}` : "—";
+    row.append(nameCell, posCell, adpCell, rankCell, posRankCell);
     tbody.appendChild(row);
   }
   table.appendChild(tbody);

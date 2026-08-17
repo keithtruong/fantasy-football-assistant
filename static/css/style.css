@@ -318,6 +318,14 @@ tr.future-pick-row {
   background: var(--highlight);
 }
 
+/* Matches .tier-block-current in the Tiers pane — same signal (current
+   remaining top tier at that position), same color, table cell instead of a
+   block border. */
+td.tier-current {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .player-name-cell {
   cursor: pointer;
 }

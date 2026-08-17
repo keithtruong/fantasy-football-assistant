@@ -75,7 +75,7 @@ function buildTierBlock(position, tierNum, players, draftedIds, isCurrent) {
   const table = document.createElement("table");
   table.className = "tier-player-table borderless-table";
   const thead = document.createElement("thead");
-  thead.innerHTML = "<tr><th>Rank</th><th>Player</th><th>Team</th></tr>";
+  thead.innerHTML = "<tr><th>Rank</th><th>Player</th><th>Team</th><th>Pos Rank</th></tr>";
   table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
@@ -89,7 +89,9 @@ function buildTierBlock(position, tierNum, players, draftedIds, isCurrent) {
     nameCell.textContent = player.full_name;
     const teamCell = document.createElement("td");
     teamCell.textContent = player.nfl_team || "—";
-    row.append(rankCell, nameCell, teamCell);
+    const posRankCell = document.createElement("td");
+    posRankCell.textContent = player.pos_rank != null ? `${position}${player.pos_rank}` : "—";
+    row.append(rankCell, nameCell, teamCell, posRankCell);
     tbody.appendChild(row);
   }
   table.appendChild(tbody);

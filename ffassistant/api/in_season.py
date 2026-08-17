@@ -67,30 +67,34 @@ def get_in_season(league_id):
 
 def _fetch_rostered(db, team_id, ranking_type, season, week):
     rank_filter, rank_params = _rank_filter(ranking_type, week)
+    pos_rank_join, pos_rank_params = _pos_rank_join(ranking_type, season, week)
     rows = db.execute(
         f"""
-        SELECT p.player_id, p.full_name, p.position, r.rank, ps.status
+        SELECT p.player_id, p.full_name, p.position, r.rank, ps.status, pr.pos_rank
         FROM roster_spots rs
         JOIN players p ON p.player_id = rs.player_id
         LEFT JOIN rankings r ON r.player_id = p.player_id
               AND r.ranking_type = ? AND r.season = ? {rank_filter}
         LEFT JOIN player_status ps ON ps.player_id = p.player_id AND ps.season = ? AND ps.week = ?
+        {pos_rank_join}
         WHERE rs.team_id = ?
         ORDER BY (r.rank IS NULL) DESC, r.rank DESC
         """,
-        (ranking_type, season, *rank_params, season, week, team_id),
+        (ranking_type, season, *rank_params, season, week, *pos_rank_params, team_id),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
 def _fetch_available(db, league_id, ranking_type, season, week):
     rank_filter, rank_params = _rank_filter(ranking_type, week)
+    pos_rank_join, pos_rank_params = _pos_rank_join(ranking_type, season, week)
     rows = db.execute(
         f"""
-        SELECT p.player_id, p.full_name, p.position, r.rank
+        SELECT p.player_id, p.full_name, p.position, r.rank, pr.pos_rank
         FROM players p
         JOIN rankings r ON r.player_id = p.player_id
               AND r.ranking_type = ? AND r.season = ? {rank_filter}
+        {pos_rank_join}
         WHERE p.player_id NOT IN (
             SELECT rs.player_id FROM roster_spots rs
             JOIN teams t ON t.team_id = rs.team_id
@@ -98,14 +102,31 @@ def _fetch_available(db, league_id, ranking_type, season, week):
         )
         ORDER BY r.rank ASC
         """,
-        (ranking_type, season, *rank_params, league_id),
+        (ranking_type, season, *rank_params, *pos_rank_params, league_id),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def _rank_filter(ranking_type, week):
+def _rank_filter(ranking_type, week, alias="r"):
     """'ros' rankings never have a week (schema convention, same as 'draft'); only
     'weekly' rows need the week filter."""
     if ranking_type == "weekly":
-        return "AND r.week = ?", (week,)
-    return "AND r.week IS NULL", ()
+        return f"AND {alias}.week = ?", (week,)
+    return f"AND {alias}.week IS NULL", ()
+
+
+def _pos_rank_join(ranking_type, season, week):
+    """Rank-within-position, computed over the *full* ranked pool for this
+    ranking_type/season/week — not just whichever rostered/available subset is
+    being queried, so e.g. a QB's pos_rank reflects the whole league's QB order."""
+    rank_filter, rank_params = _rank_filter(ranking_type, week, alias="r2")
+    sql = f"""
+        LEFT JOIN (
+            SELECT r2.player_id,
+                   RANK() OVER (PARTITION BY p2.position ORDER BY r2.rank ASC) AS pos_rank
+            FROM rankings r2
+            JOIN players p2 ON p2.player_id = r2.player_id
+            WHERE r2.ranking_type = ? AND r2.season = ? AND r2.rank IS NOT NULL {rank_filter}
+        ) pr ON pr.player_id = p.player_id
+    """
+    return sql, (ranking_type, season, *rank_params)

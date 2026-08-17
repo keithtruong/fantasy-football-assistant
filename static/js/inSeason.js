@@ -72,6 +72,13 @@ function buildColumn(title, players, kind) {
     rankSpan.textContent = player.rank != null ? `#${player.rank}` : "Unranked";
     li.appendChild(rankSpan);
 
+    if (player.pos_rank != null) {
+      const posRankSpan = document.createElement("span");
+      posRankSpan.className = "in-season-rank";
+      posRankSpan.textContent = `${player.position}${player.pos_rank}`;
+      li.appendChild(posRankSpan);
+    }
+
     li.appendChild(document.createTextNode(" " + player.full_name));
 
     if (kind === "rostered" && player.status && player.status !== "healthy") {

@@ -27,7 +27,8 @@ def get_rankings(league_id):
         """
         SELECT r.rank, r.tier, r.adp, p.player_id, p.full_name, p.position, p.nfl_team, p.is_rookie,
                byes.bye_week, sos.playoff_sos_avg_opp_wins, sos.sos_rank, mt.tag AS manual_tag,
-               rt.tag AS role_tag, it.implied_tt_full, it.offense_rank
+               rt.tag AS role_tag, it.implied_tt_full, it.offense_rank,
+               RANK() OVER (PARTITION BY p.position ORDER BY r.rank ASC) AS pos_rank
         FROM rankings r
         JOIN players p ON p.player_id = r.player_id
         LEFT JOIN nfl_team_byes byes ON byes.team = p.nfl_team AND byes.season = r.season
