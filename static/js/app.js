@@ -5,6 +5,7 @@ import { renderCombinedTab } from "./combined.js";
 import { renderTiersTab } from "./tiers.js";
 import { renderRostersTab } from "./rosters.js";
 import { renderScheduleTab } from "./schedule.js";
+import { renderPostDraftTab } from "./postDraft.js";
 import { renderLeagueSettings } from "./leagueSettings.js";
 import { renderInSeasonView } from "./inSeason.js";
 import { renderExposureView } from "./exposure.js";
@@ -30,6 +31,7 @@ const tabRenderers = {
   tiers: renderTiersTab,
   rosters: renderRostersTab,
   schedule: renderScheduleTab,
+  post_draft: renderPostDraftTab,
 };
 
 const tabContent = document.getElementById("tab-content");

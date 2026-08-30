@@ -10,6 +10,7 @@
   --highlight: #fff4d9;
   --steal: #2f7d52;
   --tough: #f6dbdb;
+  --tough-ink: #a13a3a;
   --dot-neutral: #a8b0a4;
   --dot-mine: #cc7a1e;
   --rookie-bg: #fdeeaa;
@@ -36,6 +37,7 @@
     --highlight: #2a2013;
     --steal: #5fae82;
     --tough: #3a1c1c;
+    --tough-ink: #e2938c;
     --dot-neutral: #3d4f5e;
     --dot-mine: #e0973f;
     --rookie-bg: #3d3208;
@@ -375,6 +377,7 @@ td.tier-current {
 
 .tag-chip.tag-positive { background: var(--filled); color: var(--steal); }
 .tag-chip.tag-caution { background: var(--highlight); color: var(--accent); }
+.tag-chip.tag-negative { background: var(--tough); color: var(--tough-ink); }
 .tag-chip.tag-neutral { background: var(--line); color: var(--ink-muted); }
 .tag-chip.tag-rookie { background: var(--rookie-bg); color: var(--rookie-ink); }
 
@@ -485,6 +488,105 @@ td.slot-filled { background: var(--filled); }
 
 @media (max-width: 900px) {
   .draft-layout { grid-template-columns: 1fr; }
+}
+
+/* ---- Post-Draft tab ---- */
+
+.post-draft-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.post-draft-status {
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.post-draft-hint {
+  color: var(--ink-muted);
+  font-size: 13.5px;
+  max-width: 560px;
+}
+
+/* Team x round grid — same shape as the Grid tab's draft board (.grid-scroll,
+   .grid-round-label, .grid-cell-empty, .grid-position-chip are shared with it)
+   so every team column is the same fixed width and every round is literally
+   the same table row, rather than independent per-team cards whose heights
+   and column widths drifted apart. */
+table.post-draft-grid {
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+table.post-draft-grid th, table.post-draft-grid td {
+  border: 1px solid var(--line);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.post-draft-grid th:first-child, table.post-draft-grid td:first-child {
+  width: 40px;
+}
+
+table.post-draft-grid th:not(:first-child), table.post-draft-grid td:not(:first-child) {
+  width: 190px;
+}
+
+.post-draft-team-header { vertical-align: top; }
+
+.post-draft-team-header.my-team-col { border-bottom: 3px solid var(--accent); }
+
+.post-draft-team-name {
+  font-weight: 600;
+  color: var(--ink-strong);
+  margin-bottom: 3px;
+}
+
+.post-draft-team-breakdown {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
+.post-draft-cell-player {
+  font-weight: 600;
+  margin-bottom: 3px;
+  overflow-wrap: break-word;
+}
+
+.post-draft-cell-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.post-draft-cell-pick {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+td.post-draft-cell-value { border-left: 3px solid var(--steal); }
+td.post-draft-cell-reach { border-left: 3px solid var(--tough-ink); }
+
+.post-draft-notes-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 2px 5px;
+  font-size: 12px;
+}
+
+.post-draft-notes-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* ---- Grid tab ---- */

@@ -54,6 +54,22 @@ export const api = {
     request(`/api/leagues/${leagueId}/draft_picks/${pickId}`, { method: "DELETE" }),
   clearPicks: (leagueId, season) =>
     request(`/api/leagues/${leagueId}/draft_picks?season=${season}`, { method: "DELETE" }),
+  updatePickNotes: (leagueId, pickId, notes) =>
+    request(`/api/leagues/${leagueId}/draft_picks/${pickId}/notes`, {
+      method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ notes }),
+    }),
+  getPostDraft: (leagueId, season) =>
+    request(`/api/leagues/${leagueId}/post_draft?season=${season}`),
+  completeDraft: (leagueId, season, scoringFormat) =>
+    request(`/api/leagues/${leagueId}/post_draft/complete`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ season, scoring_format: scoringFormat }),
+    }),
+  reopenDraft: (leagueId, season) =>
+    request(`/api/leagues/${leagueId}/post_draft/complete?season=${season}`, { method: "DELETE" }),
   searchPlayers: (query, leagueId, season) =>
     request(`/api/players/search?q=${encodeURIComponent(query)}&league_id=${leagueId}&season=${season}`),
   setManualTag: (playerId, tag) =>

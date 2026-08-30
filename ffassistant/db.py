@@ -36,3 +36,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE players ADD COLUMN is_rookie INTEGER NOT NULL DEFAULT 0 CHECK (is_rookie IN (0, 1))"
         )
+
+    draft_picks_columns = {row["name"] for row in conn.execute("PRAGMA table_info(draft_picks)")}
+    if "notes" not in draft_picks_columns:
+        conn.execute("ALTER TABLE draft_picks ADD COLUMN notes TEXT")

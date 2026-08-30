@@ -69,6 +69,22 @@ def edit_pick(pick_id, league_id):
     return jsonify({"draft_pick_id": pick_id, "player_id": player_id})
 
 
+@draft_picks_bp.put("/<int:pick_id>/notes")
+def update_pick_notes(pick_id, league_id):
+    db = get_db()
+    body = request.get_json(force=True)
+    notes = body.get("notes") or None
+
+    result = db.execute(
+        "UPDATE draft_picks SET notes = ? WHERE draft_pick_id = ? AND league_id = ?",
+        (notes, pick_id, league_id),
+    )
+    if result.rowcount == 0:
+        abort(404, description="Pick not found")
+    db.commit()
+    return jsonify({"draft_pick_id": pick_id, "notes": notes})
+
+
 @draft_picks_bp.delete("")
 def clear_picks(league_id):
     """Wipes every pick for this league/season — a mock-draft reset, not an undo.

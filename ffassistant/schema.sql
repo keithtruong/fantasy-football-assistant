@@ -251,10 +251,41 @@ CREATE TABLE IF NOT EXISTS draft_picks (
     team_id         INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
     player_id       INTEGER REFERENCES players (player_id) ON DELETE SET NULL,
     picked_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Keith's own freeform note on this pick, for post-draft review (e.g. "hurt
+    -- shoulder in camp, monitor"). Never touched by any sync.
+    notes           TEXT,
     UNIQUE (league_id, season, pick_number)
 );
 
 CREATE INDEX IF NOT EXISTS idx_draft_picks_league_season ON draft_picks (league_id, season);
+
+-- Marks a league/season's draft as "done" for post-draft analysis purposes,
+-- and records which scoring_format's rankings were frozen into
+-- draft_analysis_snapshots below (rankings are scoring-format-specific, and a
+-- league's active format at draft time isn't otherwise recorded anywhere).
+CREATE TABLE IF NOT EXISTS draft_completions (
+    league_id       INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
+    season          INTEGER NOT NULL,
+    scoring_format  TEXT NOT NULL,
+    completed_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (league_id, season)
+);
+
+-- Freezes the draft rankings pool at the moment a draft is marked complete.
+-- The live `rankings` table is a full-replace sync (see rankings ingest) —
+-- without a snapshot, a future refresh would silently change what "expected
+-- pick" meant for a draft that already happened. Not meant for direct
+-- display, just the frozen inputs post-draft comparisons are computed from.
+CREATE TABLE IF NOT EXISTS draft_analysis_snapshots (
+    league_id       INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
+    season          INTEGER NOT NULL,
+    scoring_format  TEXT NOT NULL,
+    player_id       INTEGER NOT NULL REFERENCES players (player_id) ON DELETE CASCADE,
+    rank            INTEGER,
+    tier            INTEGER,
+    adp             REAL,
+    PRIMARY KEY (league_id, season, player_id)
+);
 
 -- Current roster membership snapshot — who's on which team right now.
 -- Starter/bench display is derived at the application layer from position
