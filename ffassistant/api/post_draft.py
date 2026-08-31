@@ -29,19 +29,28 @@ def get_post_draft(league_id):
 
     rows = db.execute(
         """
+        WITH snapshot_pos_rank AS (
+            SELECT s.player_id,
+                   RANK() OVER (PARTITION BY p.position ORDER BY s.rank ASC) AS pos_rank
+            FROM draft_analysis_snapshots s
+            JOIN players p ON p.player_id = s.player_id
+            WHERE s.league_id = ? AND s.season = ?
+        )
         SELECT dp.draft_pick_id, dp.round, dp.pick_number, dp.notes, dp.team_id,
                COALESCE(t.display_name, t.team_name) AS team_name,
                p.player_id, p.full_name, p.position,
-               s.rank AS snapshot_rank, s.tier AS snapshot_tier, s.adp AS snapshot_adp
+               s.rank AS snapshot_rank, s.tier AS snapshot_tier, s.adp AS snapshot_adp,
+               spr.pos_rank AS snapshot_pos_rank
         FROM draft_picks dp
         JOIN teams t ON t.team_id = dp.team_id
         LEFT JOIN players p ON p.player_id = dp.player_id
         LEFT JOIN draft_analysis_snapshots s
                ON s.league_id = dp.league_id AND s.season = dp.season AND s.player_id = dp.player_id
+        LEFT JOIN snapshot_pos_rank spr ON spr.player_id = dp.player_id
         WHERE dp.league_id = ? AND dp.season = ?
         ORDER BY dp.pick_number
         """,
-        (league_id, season),
+        (league_id, season, league_id, season),
     ).fetchall()
 
     picks = []

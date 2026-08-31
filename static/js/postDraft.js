@@ -186,6 +186,13 @@ function buildPickCell(pick, state) {
   pickText.textContent = `Pick ${pick.pick_number}`;
   metaLine.appendChild(pickText);
 
+  if (pick.position && pick.snapshot_pos_rank != null) {
+    const posRankText = document.createElement("span");
+    posRankText.className = "post-draft-cell-pick";
+    posRankText.textContent = `${pick.position}${pick.snapshot_pos_rank}`;
+    metaLine.appendChild(posRankText);
+  }
+
   if (pick.rank_diff != null) {
     const chip = el("span", "tag-chip");
     // Only color notable picks (the backend's +/-5 threshold) green/red — small
@@ -207,8 +214,10 @@ function buildPickCell(pick, state) {
   }
   cell.appendChild(metaLine);
 
-  const notesInput = document.createElement("input");
-  notesInput.type = "text";
+  // Textarea (not a single-line input) so a longer note is actually readable
+  // in place — resizable vertically if the default couple of lines isn't enough.
+  const notesInput = document.createElement("textarea");
+  notesInput.rows = 4;
   notesInput.className = "post-draft-notes-input";
   notesInput.placeholder = "Note…";
   notesInput.value = pick.notes || "";

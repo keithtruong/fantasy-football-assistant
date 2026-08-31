@@ -69,6 +69,19 @@ class TestCompleteDraft(PostDraftTestCase):
         self.assertEqual(saquon["rank_diff"], 0)
         self.assertFalse(saquon["notable"])
 
+    def test_snapshot_pos_rank_computed_per_position(self):
+        # RBs ordered by rank: Saquon (1) -> RB1, Bijan (2) -> RB2. Josh Allen
+        # is the only QB in the snapshot -> QB1.
+        self._draft_all_four()
+        self.client.post(
+            "/api/leagues/1/post_draft/complete", json={"season": SEASON, "scoring_format": "full_ppr"}
+        )
+        picks = self.client.get(f"/api/leagues/1/post_draft?season={SEASON}").get_json()["picks"]
+        by_name = {p["full_name"]: p for p in picks}
+        self.assertEqual(by_name["Saquon Barkley"]["snapshot_pos_rank"], 1)
+        self.assertEqual(by_name["Bijan Robinson"]["snapshot_pos_rank"], 2)
+        self.assertEqual(by_name["Josh Allen"]["snapshot_pos_rank"], 1)
+
     def test_josh_allen_rank_5_taken_pick_3_is_a_small_reach(self):
         # Pick 3 = Josh Allen (rank 5) -> taken 2 spots ahead of rank -> diff
         # 3 - 5 = -2 (negative = reach), below the notable threshold.

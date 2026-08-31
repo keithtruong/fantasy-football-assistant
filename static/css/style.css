@@ -518,22 +518,25 @@ td.slot-filled { background: var(--filled); }
 table.post-draft-grid {
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 table.post-draft-grid th, table.post-draft-grid td {
   border: 1px solid var(--line);
-  padding: 5px 8px;
+  padding: 8px 10px;
   text-align: left;
   vertical-align: top;
 }
 
 table.post-draft-grid th:first-child, table.post-draft-grid td:first-child {
-  width: 40px;
+  width: 46px;
 }
 
+/* Wide by default — this view is built for a roomy (e.g. ultrawide) monitor,
+   and the extra width is what gives the notes textarea below enough room to
+   actually be readable rather than a cramped single line. */
 table.post-draft-grid th:not(:first-child), table.post-draft-grid td:not(:first-child) {
-  width: 190px;
+  width: 280px;
 }
 
 .post-draft-team-header { vertical-align: top; }
@@ -576,12 +579,16 @@ td.post-draft-cell-reach { border-left: 3px solid var(--tough-ink); }
 
 .post-draft-notes-input {
   width: 100%;
+  min-height: 92px;
+  resize: vertical;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--surface);
   color: var(--ink);
-  padding: 2px 5px;
-  font-size: 12px;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.35;
 }
 
 .post-draft-notes-input:focus {
@@ -1220,11 +1227,23 @@ table.scoring-table td:last-child {
   margin-bottom: 10px;
 }
 
-.exposure-position-group table.exposure-table { margin-top: 6px; }
+.exposure-position-group table.exposure-table {
+  margin-top: 6px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Fixed widths (rather than each position's table auto-sizing to its own
+   content) so Player/Leagues/Where line up across QB/RB/WR/etc. groups —
+   "Where" gets whatever's left, which is identical group-to-group since
+   every group is the same overall width. */
+.exposure-table th:nth-child(1), .exposure-table td:nth-child(1) { width: 200px; }
+.exposure-table th:nth-child(2), .exposure-table td:nth-child(2) { width: 65px; text-align: center; }
 
 .exposure-leagues-cell {
   color: var(--ink-muted);
   font-size: 12.5px;
+  overflow-wrap: break-word;
 }
 
 .exposure-empty {
