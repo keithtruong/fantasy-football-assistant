@@ -14,7 +14,12 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS leagues (
     league_id           INTEGER PRIMARY KEY,
     name                TEXT NOT NULL,
-    platform            TEXT NOT NULL CHECK (platform IN ('espn', 'yahoo', 'sleeper')),
+    -- 'manual' is a placeholder league with no platform connector — teams and
+    -- roster slots are entered by hand instead of pulled via sync. Meant for
+    -- getting the Draft/Grid/Tiers/Rosters tabs usable before a platform
+    -- connector is available (e.g. pending API access), not a long-term
+    -- substitute for a real connector.
+    platform            TEXT NOT NULL CHECK (platform IN ('espn', 'yahoo', 'sleeper', 'manual')),
     platform_league_id  TEXT,
     team_count          INTEGER NOT NULL,
     active              INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),

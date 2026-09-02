@@ -974,6 +974,10 @@ table.tier-player-table td:first-child {
   color: var(--ink-muted);
 }
 
+.add-team-form {
+  margin-top: 8px;
+}
+
 table.teams-table {
   width: 100%;
   border-collapse: collapse;
@@ -985,6 +989,82 @@ table.teams-table th, table.teams-table td {
   border-bottom: 1px solid var(--line);
   padding: 5px 8px;
   text-align: left;
+}
+
+.delete-team-button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.roster-slot-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.roster-slot-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.roster-slot-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.roster-slot-count-input {
+  width: 60px;
+  padding: 5px 8px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.roster-slot-remove-button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-muted);
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.roster-slot-button-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.roster-slot-button-row button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.roster-slot-button-row .form-status {
+  margin-top: 0;
 }
 
 .draft-position-input {

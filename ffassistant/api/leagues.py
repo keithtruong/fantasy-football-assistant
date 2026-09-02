@@ -8,6 +8,11 @@ leagues_bp = Blueprint("leagues", __name__, url_prefix="/api/leagues")
 
 _PLATFORMS = ("sleeper", "espn", "yahoo")
 
+# A placeholder league with no connector — see schema.sql's note on
+# leagues.platform. Teams and roster slots are entered by hand via the
+# manual_teams/roster_slots endpoints below instead of pulled via sync.
+_MANUAL_PLATFORM = "manual"
+
 # Each platform names its reception stat differently (ESPN: 'REC', Sleeper: 'rec',
 # Yahoo: a slugified display_name like 'reception') since league_scoring stores
 # whatever raw key the connector returned — no normalized vocabulary yet.
@@ -74,6 +79,11 @@ def create_league():
     re-sync of the existing league rather than creating a duplicate — this
     matters because a slow/ambiguous UI response (see: this actually happening)
     invites exactly that double-submit.
+
+    platform='manual' skips all of that: no platform_league_id, no sync, no
+    dedupe-by-ID (there's no ID to dedupe on) — just an empty league record
+    that the manual_teams/roster_slots endpoints below fill in by hand. See
+    schema.sql's note on leagues.platform for why this exists.
     """
     db = get_db()
     body = request.get_json(force=True)
@@ -81,6 +91,17 @@ def create_league():
     platform = body.get("platform")
     platform_league_id = body.get("platform_league_id")
     season = int(body.get("season") or datetime.date.today().year)
+
+    if platform == _MANUAL_PLATFORM:
+        if not name:
+            abort(400, description="name is required")
+        row = db.execute(
+            "INSERT INTO leagues (name, platform, platform_league_id, team_count, active) "
+            "VALUES (?, ?, NULL, 0, 1) RETURNING league_id",
+            (name, _MANUAL_PLATFORM),
+        ).fetchone()
+        db.commit()
+        return jsonify({"league_id": row["league_id"], "already_existed": False}), 201
 
     if not name or platform not in _PLATFORMS or not platform_league_id:
         abort(400, description=f"name, platform ({'/'.join(_PLATFORMS)}), and platform_league_id are required")
@@ -288,6 +309,99 @@ def update_team(league_id, team_id):
         abort(404, description="Team not found")
     db.commit()
     return jsonify({"team_id": team_id, **fields})
+
+
+@leagues_bp.post("/<int:league_id>/manual_teams")
+def add_manual_team(league_id):
+    """Adds one team by hand — the manual-league stand-in for what a platform
+    sync would otherwise populate. draft_position/is_mine are set afterward via
+    the existing PUT /teams/<id> endpoint, same as for a synced league.
+    """
+    db = get_db()
+    league = _require_manual_league(db, league_id, "add teams")
+
+    body = request.get_json(force=True)
+    team_name = (body.get("team_name") or "").strip()
+    if not team_name:
+        abort(400, description="team_name is required")
+
+    row = db.execute(
+        "INSERT INTO teams (league_id, team_name, is_mine) VALUES (?, ?, 0) RETURNING team_id",
+        (league_id, team_name),
+    ).fetchone()
+    _refresh_manual_team_count(db, league_id)
+    db.commit()
+    return jsonify({"team_id": row["team_id"], "team_name": team_name}), 201
+
+
+@leagues_bp.delete("/<int:league_id>/manual_teams/<int:team_id>")
+def delete_manual_team(league_id, team_id):
+    db = get_db()
+    _require_manual_league(db, league_id, "remove teams")
+
+    has_picks = db.execute("SELECT 1 FROM draft_picks WHERE team_id = ? LIMIT 1", (team_id,)).fetchone()
+    if has_picks:
+        abort(409, description="Can't remove a team that already has draft picks recorded — undo those picks first")
+
+    result = db.execute("DELETE FROM teams WHERE team_id = ? AND league_id = ?", (team_id, league_id))
+    if result.rowcount == 0:
+        abort(404, description="Team not found")
+    _refresh_manual_team_count(db, league_id)
+    db.commit()
+    return "", 204
+
+
+@leagues_bp.put("/<int:league_id>/roster_slots")
+def set_roster_slots(league_id):
+    """Full-replace roster-slot config for a manual league — the hand-entered
+    equivalent of what a platform sync writes (see ingest/espn.py etc.), since
+    the Grid tab's round count and the position-count summary both read
+    roster_slots regardless of where it came from.
+    """
+    db = get_db()
+    _require_manual_league(db, league_id, "edit roster slots")
+
+    body = request.get_json(force=True)
+    slots = body.get("slots")
+    if not isinstance(slots, list) or not slots:
+        abort(400, description="slots must be a non-empty list of {slot_name, slot_count}")
+
+    cleaned = []
+    for slot in slots:
+        slot_name = str(slot.get("slot_name") or "").strip().upper()
+        try:
+            slot_count = int(slot.get("slot_count"))
+        except (TypeError, ValueError):
+            abort(400, description=f"Invalid slot_count for {slot_name!r}")
+        if not slot_name or slot_count < 0:
+            abort(400, description="Each slot needs a slot_name and a non-negative slot_count")
+        if slot_count > 0:
+            cleaned.append((slot_name, slot_count))
+
+    db.execute("DELETE FROM roster_slots WHERE league_id = ?", (league_id,))
+    for slot_name, slot_count in cleaned:
+        db.execute(
+            "INSERT INTO roster_slots (league_id, slot_name, slot_count) VALUES (?, ?, ?)",
+            (league_id, slot_name, slot_count),
+        )
+    db.commit()
+    return jsonify(
+        {"league_id": league_id, "roster_slots": [{"slot_name": n, "slot_count": c} for n, c in cleaned]}
+    )
+
+
+def _require_manual_league(db, league_id, action: str):
+    league = db.execute("SELECT platform FROM leagues WHERE league_id = ?", (league_id,)).fetchone()
+    if league is None:
+        abort(404, description="League not found")
+    if league["platform"] != _MANUAL_PLATFORM:
+        abort(400, description=f"Only manual leagues support hand-editing to {action} — platform leagues get this from Re-sync")
+    return league
+
+
+def _refresh_manual_team_count(db, league_id):
+    team_count = db.execute("SELECT COUNT(*) AS c FROM teams WHERE league_id = ?", (league_id,)).fetchone()["c"]
+    db.execute("UPDATE leagues SET team_count = ? WHERE league_id = ?", (team_count, league_id))
 
 
 def _current_season(db, league_id) -> int:

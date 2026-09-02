@@ -32,6 +32,20 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload),
     }),
+  addManualTeam: (leagueId, teamName) =>
+    request(`/api/leagues/${leagueId}/manual_teams`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ team_name: teamName }),
+    }),
+  deleteManualTeam: (leagueId, teamId) =>
+    request(`/api/leagues/${leagueId}/manual_teams/${teamId}`, { method: "DELETE" }),
+  setRosterSlots: (leagueId, slots) =>
+    request(`/api/leagues/${leagueId}/roster_slots`, {
+      method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ slots }),
+    }),
   getSettings: (leagueId) => request(`/api/leagues/${leagueId}/settings`),
   getTeams: (leagueId) => request(`/api/leagues/${leagueId}/teams`),
   getRankings: (leagueId, scoringFormat, season) =>
