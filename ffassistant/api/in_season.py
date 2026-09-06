@@ -16,9 +16,10 @@ AVAILABLE_LIMIT_PER_POSITION = 30
 def get_in_season(league_id):
     """Rostered-vs-available view for Keith's own team, grouped by position.
 
-    Mirrors the legacy 'Weekly Rank Eval' sheet: worst rostered players sort to
-    the top (unranked/injured included, never dropped), available players are
-    shown ungated by whether they'd actually be an upgrade.
+    Both lists sort best-first (lowest rank first); unranked/injured rostered
+    players still appear (never dropped), sorted to the bottom since there's no
+    rank to sort them by. Available players are shown ungated by whether they'd
+    actually be an upgrade.
     """
     db = get_db()
     view = request.args.get("view", "weekly")
@@ -78,7 +79,7 @@ def _fetch_rostered(db, team_id, ranking_type, season, week):
         LEFT JOIN player_status ps ON ps.player_id = p.player_id AND ps.season = ? AND ps.week = ?
         {pos_rank_join}
         WHERE rs.team_id = ?
-        ORDER BY (r.rank IS NULL) DESC, r.rank DESC
+        ORDER BY (r.rank IS NULL) ASC, r.rank ASC
         """,
         (ranking_type, season, *rank_params, season, week, *pos_rank_params, team_id),
     ).fetchall()

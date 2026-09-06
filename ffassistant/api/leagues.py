@@ -125,7 +125,7 @@ def create_league():
         db.commit()
 
     try:
-        _sync_from_platform(db, league_id, platform, platform_league_id, season)
+        _sync_from_platform(db, league_id, platform, platform_league_id, season, week=_current_week(db, season))
     except Exception as e:
         if not existing:
             # Don't leave a broken, un-synced league row behind for a failed add.
@@ -178,40 +178,32 @@ def resync_league(league_id):
 
     body = request.get_json(silent=True) or {}
     season = int(body.get("season") or datetime.date.today().year)
+    week = body.get("week", None)
+    if week is None:
+        week = _current_week(db, season)
 
     try:
-        _sync_from_platform(db, league_id, league["platform"], league["platform_league_id"], season)
+        _sync_from_platform(db, league_id, league["platform"], league["platform_league_id"], season, week=week)
     except Exception as e:
         abort(502, description=f"Sync failed: {e}")
 
-    return jsonify({"league_id": league_id})
+    return jsonify({"league_id": league_id, "week": week})
 
 
-def _sync_from_platform(db, league_id, platform, platform_league_id, season):
-    if platform == "sleeper":
-        from ffassistant.ingest import sleeper as sleeper_ingest
+def _current_week(db, season):
+    """Wraps ffassistant.season.current_week so a resync auto-populates
+    player_status whenever the season's week1_start_date is set and today
+    falls within weeks 1-17 — no explicit `week` needed from the caller.
+    """
+    from ffassistant import season as season_mod
 
-        sleeper_ingest.sync_league(db, league_id, str(platform_league_id), season=season)
-    elif platform == "espn":
-        from ffassistant.ingest import espn as espn_ingest
+    return season_mod.current_week(db, season)
 
-        try:
-            espn_numeric_id = int(platform_league_id)
-        except ValueError:
-            raise ValueError(
-                f"ESPN league ID must be numeric (e.g. 360508, from the leagueId= URL param) — got {platform_league_id!r}"
-            )
-        espn_ingest.sync_league(db, league_id, espn_numeric_id, year=season)
-    elif platform == "yahoo":
-        from ffassistant.ingest import yahoo as yahoo_ingest
 
-        yahoo_ingest.sync_league(db, league_id, str(platform_league_id), season=season)
-    else:
-        raise ValueError(f"Unknown platform: {platform}")
+def _sync_from_platform(db, league_id, platform, platform_league_id, season, week=None):
+    from ffassistant.ingest import sync_league_from_platform
 
-    team_count = db.execute("SELECT COUNT(*) AS c FROM teams WHERE league_id = ?", (league_id,)).fetchone()["c"]
-    db.execute("UPDATE leagues SET team_count = ? WHERE league_id = ?", (team_count, league_id))
-    db.commit()
+    sync_league_from_platform(db, league_id, platform, platform_league_id, season, week=week)
 
 
 @leagues_bp.get("/<int:league_id>/settings")

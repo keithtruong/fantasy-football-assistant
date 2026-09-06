@@ -121,4 +121,27 @@ export const api = {
     }),
   getRankingsSyncStatus: (season, scoringFormat) =>
     request(`/api/rankings/sync_status?season=${season}&scoring_format=${scoringFormat}`),
+  syncWeeklyRankings: (season, week) =>
+    request("/api/rankings/sync_weekly", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ season, week }),
+    }),
+  getWeeklyRankingsSyncStatus: (season, week) =>
+    request(`/api/rankings/sync_status_weekly?season=${season}&week=${week}`),
+  syncRosRankings: (season, scoringFormat) =>
+    request("/api/rankings/sync_ros", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ season, scoring_format: scoringFormat }),
+    }),
+  getRosRankingsSyncStatus: (season, scoringFormat) =>
+    request(`/api/rankings/sync_status_ros?season=${season}&scoring_format=${scoringFormat}`),
+  getSeason: (season) => request(`/api/season/${season}`),
+  setSeasonWeek1: (season, week1StartDate) =>
+    request(`/api/season/${season}`, {
+      method: "PUT",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ week1_start_date: week1StartDate }),
+    }),
 };

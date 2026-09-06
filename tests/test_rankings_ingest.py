@@ -211,6 +211,62 @@ class TestSyncWeeklyRankings(unittest.TestCase):
         self.assertEqual(count, 2)  # week 1 and week 2 both kept
 
 
+FAKE_ROS_ROWS = [
+    {"full_name": "Ja'Marr Chase", "position": "WR", "nfl_team": "CIN", "rank": 1},
+    {"full_name": "Totally Unknown Rookie", "position": "WR", "nfl_team": "NYJ", "rank": 2},
+]
+
+
+class TestSyncRosRankings(unittest.TestCase):
+    def setUp(self):
+        self.conn = make_conn()
+        self.conn.execute(
+            "INSERT INTO players (player_id, full_name, position) VALUES (1, \"Ja'Marr Chase\", 'WR')"
+        )
+        self.conn.commit()
+
+    @patch("ffassistant.ingest.rankings.rankings_api.get_ros_rankings", return_value=FAKE_ROS_ROWS)
+    def test_matches_known_players_and_queues_unknown(self, _mock):
+        rankings_ingest.sync_ros_rankings(self.conn, season=2026, scoring_format="full_ppr")
+
+        rows = self.conn.execute(
+            "SELECT p.full_name, r.rank, r.week, r.scoring_format FROM rankings r "
+            "JOIN players p ON p.player_id = r.player_id WHERE r.ranking_type = 'ros'"
+        ).fetchall()
+        self.assertEqual(len(rows), 1)  # unknown rookie NOT auto-created
+        self.assertEqual(rows[0]["full_name"], "Ja'Marr Chase")
+        self.assertIsNone(rows[0]["week"])  # ROS rows have no week, same convention as draft
+        self.assertEqual(rows[0]["scoring_format"], "full_ppr")
+
+        unresolved = self.conn.execute(
+            "SELECT raw_name FROM unresolved_aliases WHERE source = 'rankings_provider'"
+        ).fetchall()
+        self.assertEqual([r["raw_name"] for r in unresolved], ["Totally Unknown Rookie"])
+
+        player_count = self.conn.execute("SELECT COUNT(*) AS c FROM players").fetchone()["c"]
+        self.assertEqual(player_count, 1)  # unmatched name NOT auto-created
+
+    @patch("ffassistant.ingest.rankings.rankings_api.get_ros_rankings", return_value=FAKE_ROS_ROWS)
+    def test_resync_replaces_rather_than_duplicates(self, _mock):
+        rankings_ingest.sync_ros_rankings(self.conn, season=2026, scoring_format="full_ppr")
+        rankings_ingest.sync_ros_rankings(self.conn, season=2026, scoring_format="full_ppr")
+
+        count = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'ros'"
+        ).fetchone()["c"]
+        self.assertEqual(count, 1)  # not 2
+
+    @patch("ffassistant.ingest.rankings.rankings_api.get_ros_rankings", return_value=FAKE_ROS_ROWS)
+    def test_different_scoring_formats_coexist(self, _mock):
+        rankings_ingest.sync_ros_rankings(self.conn, season=2026, scoring_format="full_ppr")
+        rankings_ingest.sync_ros_rankings(self.conn, season=2026, scoring_format="superflex")
+
+        count = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'ros'"
+        ).fetchone()["c"]
+        self.assertEqual(count, 2)
+
+
 FAKE_TIERS_BY_POSITION = {
     "QB": [{"full_name": "Josh Allen", "tier": 1}],
     "RB": [{"full_name": "Totally Unknown Deep Sleeper", "tier": 12}],

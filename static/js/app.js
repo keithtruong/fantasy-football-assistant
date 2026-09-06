@@ -48,6 +48,10 @@ const wlYearInput = document.getElementById("wl-year-input");
 const refreshRankingsButton = document.getElementById("refresh-rankings-button");
 const rankingsSyncStatus = document.getElementById("rankings-sync-status");
 const scoringSelect = document.getElementById("scoring-format-select");
+const refreshWeeklyRankingsButton = document.getElementById("refresh-weekly-rankings-button");
+const weeklyRankingsSyncStatus = document.getElementById("weekly-rankings-sync-status");
+const refreshRosRankingsButton = document.getElementById("refresh-ros-rankings-button");
+const rosRankingsSyncStatus = document.getElementById("ros-rankings-sync-status");
 
 let leaguesById = {};
 
@@ -124,6 +128,44 @@ async function reloadLeagues() {
   await renderActive();
 }
 
+// Prefills the week input from the backend's current_week() (see the Season
+// panel in League Settings) so the Weekly tab and its sync status reflect
+// reality on load instead of staying blank until someone types a number in —
+// still just a starting value, same as a manual entry would be, so nothing
+// stops overriding it afterward. Also reorders the section nav by the same
+// signal (see applySectionNavOrder) so whichever section is most relevant
+// right now leads.
+async function initCurrentWeek() {
+  try {
+    const seasonInfo = await api.getSeason(state.season);
+    applySectionNavOrder(seasonInfo.current_week != null);
+    if (seasonInfo.current_week != null) {
+      state.week = seasonInfo.current_week;
+      weekInput.value = state.week;
+    }
+  } catch {
+    // Non-critical — week input just stays blank for manual entry, nav stays
+    // in its preseason (Draft Tool-first) default order.
+  }
+}
+
+// Draft Tool matters most before the season starts, In-season matters most
+// once it has — Exposure is relevant year-round either way, so it stays the
+// pivot in the middle rather than moving. League Settings/W-L are low-frequency
+// admin/reference views, always last regardless.
+function applySectionNavOrder(seasonActive) {
+  const nav = document.getElementById("section-nav");
+  const order = seasonActive
+    ? ["in_season", "exposure", "draft_tool", "league_settings", "wl"]
+    : ["draft_tool", "exposure", "in_season", "league_settings", "wl"];
+  const buttonsBySection = Object.fromEntries(
+    Array.from(nav.querySelectorAll(".section-button")).map((btn) => [btn.dataset.section, btn])
+  );
+  for (const section of order) {
+    nav.appendChild(buttonsBySection[section]);
+  }
+}
+
 // Defaults the scoring-format picker to whatever this league's own settings imply
 // (see leagues API's derived `scoring_format`) so switching to e.g. a superflex
 // league surfaces superflex rankings without a manual dropdown change first.
@@ -135,6 +177,7 @@ function applyLeagueScoringFormat() {
   state.scoringFormat = scoringFormat;
   scoringSelect.value = scoringFormat;
   refreshSyncStatus();
+  refreshRosSyncStatus();
 }
 
 function formatSyncedAt(sqliteDatetime) {
@@ -155,6 +198,42 @@ async function refreshSyncStatus() {
   }
 }
 
+async function refreshWeeklySyncStatus() {
+  if (!state.week) {
+    weeklyRankingsSyncStatus.textContent = "";
+    return;
+  }
+  try {
+    const status = await api.getWeeklyRankingsSyncStatus(state.season, state.week);
+    weeklyRankingsSyncStatus.textContent = formatSyncedAt(status.synced_at);
+    weeklyRankingsSyncStatus.className = "rankings-sync-status";
+  } catch {
+    // Non-critical — leave whatever status text was already showing.
+  }
+}
+
+async function refreshRosSyncStatus() {
+  try {
+    const status = await api.getRosRankingsSyncStatus(state.season, state.scoringFormat);
+    rosRankingsSyncStatus.textContent = formatSyncedAt(status.synced_at);
+    rosRankingsSyncStatus.className = "rankings-sync-status";
+  } catch {
+    // Non-critical — leave whatever status text was already showing.
+  }
+}
+
+// Only the active in-season sub-tab's refresh control is relevant — Schedule
+// needs neither, and showing both weekly's and ROS's buttons together just
+// invites clicking the wrong one for the view you're looking at.
+function updateInSeasonControlsVisibility() {
+  const showWeekly = state.inSeasonTab === "weekly";
+  const showRos = state.inSeasonTab === "ros";
+  refreshWeeklyRankingsButton.style.display = showWeekly ? "" : "none";
+  weeklyRankingsSyncStatus.style.display = showWeekly ? "" : "none";
+  refreshRosRankingsButton.style.display = showRos ? "" : "none";
+  rosRankingsSyncStatus.style.display = showRos ? "" : "none";
+}
+
 function wireTabGroup(selector, dataAttr, stateKey) {
   document.querySelectorAll(selector).forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -173,6 +252,11 @@ function init() {
       btn.classList.add("active");
       state.activeSection = btn.dataset.section;
       renderActive();
+      if (state.activeSection === "in_season") {
+        updateInSeasonControlsVisibility();
+        refreshWeeklySyncStatus();
+        refreshRosSyncStatus();
+      }
     });
   });
 
@@ -187,6 +271,7 @@ function init() {
     state.scoringFormat = scoringSelect.value;
     renderActive();
     refreshSyncStatus();
+    refreshRosSyncStatus();
   });
 
   refreshRankingsButton.addEventListener("click", async () => {
@@ -211,13 +296,70 @@ function init() {
   });
   refreshSyncStatus();
 
+  refreshWeeklyRankingsButton.addEventListener("click", async () => {
+    if (!state.week) {
+      weeklyRankingsSyncStatus.textContent = "Enter a week number first";
+      weeklyRankingsSyncStatus.className = "rankings-sync-status rankings-sync-error";
+      return;
+    }
+    refreshWeeklyRankingsButton.disabled = true;
+    weeklyRankingsSyncStatus.textContent = "Refreshing…";
+    weeklyRankingsSyncStatus.className = "rankings-sync-status";
+    try {
+      const result = await api.syncWeeklyRankings(state.season, state.week);
+      const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
+      weeklyRankingsSyncStatus.textContent =
+        `${formatSyncedAt(result.synced_at)} — ${result.player_count} players${unresolvedNote}`;
+      weeklyRankingsSyncStatus.className = result.unresolved_count
+        ? "rankings-sync-status rankings-sync-warning"
+        : "rankings-sync-status";
+      await renderActive();
+    } catch (err) {
+      weeklyRankingsSyncStatus.textContent = err.message;
+      weeklyRankingsSyncStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshWeeklyRankingsButton.disabled = false;
+    }
+  });
+
+  refreshRosRankingsButton.addEventListener("click", async () => {
+    refreshRosRankingsButton.disabled = true;
+    rosRankingsSyncStatus.textContent = "Refreshing…";
+    rosRankingsSyncStatus.className = "rankings-sync-status";
+    try {
+      const result = await api.syncRosRankings(state.season, state.scoringFormat);
+      const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
+      rosRankingsSyncStatus.textContent =
+        `${formatSyncedAt(result.synced_at)} — ${result.player_count} players${unresolvedNote}`;
+      rosRankingsSyncStatus.className = result.unresolved_count
+        ? "rankings-sync-status rankings-sync-warning"
+        : "rankings-sync-status";
+      await renderActive();
+    } catch (err) {
+      rosRankingsSyncStatus.textContent = err.message;
+      rosRankingsSyncStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshRosRankingsButton.disabled = false;
+    }
+  });
+
   wireTabGroup("#tab-bar .tab-button", "tab", "activeTab");
   wireTabGroup("#in-season-tab-bar .tab-button", "inSeasonTab", "inSeasonTab");
   wireTabGroup("#wl-tab-bar .tab-button", "wlTab", "wlTab");
 
+  document.querySelectorAll("#in-season-tab-bar .tab-button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      updateInSeasonControlsVisibility();
+      refreshWeeklySyncStatus();
+      refreshRosSyncStatus();
+    });
+  });
+  updateInSeasonControlsVisibility();
+
   weekInput.addEventListener("change", () => {
     state.week = weekInput.value ? Number(weekInput.value) : null;
     renderActive();
+    refreshWeeklySyncStatus();
   });
 
   wlYearInput.value = state.wlYear;
@@ -226,7 +368,10 @@ function init() {
     renderActive();
   });
 
-  reloadLeagues();
+  Promise.all([reloadLeagues(), initCurrentWeek()]).then(() => {
+    refreshWeeklySyncStatus();
+    refreshRosSyncStatus();
+  });
 }
 
 init();

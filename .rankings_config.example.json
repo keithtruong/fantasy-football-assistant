@@ -16,5 +16,11 @@
         "RB": "",
         "WR": "",
         "TE": ""
+    },
+    "ros_urls": {
+        "full_ppr": "",
+        "half_ppr": "",
+        "non_ppr": "",
+        "superflex": ""
     }
 }

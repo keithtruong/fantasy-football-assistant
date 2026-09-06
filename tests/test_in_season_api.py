@@ -59,13 +59,13 @@ class TestInSeasonWeeklyView(InSeasonTestCase):
         resp = self.client.get("/api/leagues/1/in_season?view=weekly&season=2026")
         self.assertEqual(resp.status_code, 400)
 
-    def test_rostered_sorts_worst_first_with_unranked_on_top(self):
+    def test_rostered_sorts_best_first_with_unranked_last(self):
         resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
         data = resp.get_json()
         rb_rostered = data["RB"]["rostered"]
-        self.assertEqual([p["full_name"] for p in rb_rostered], ["Unranked RB Guy", "Saquon Barkley"])
-        self.assertIsNone(rb_rostered[0]["rank"])
-        self.assertEqual(rb_rostered[1]["rank"], 20)
+        self.assertEqual([p["full_name"] for p in rb_rostered], ["Saquon Barkley", "Unranked RB Guy"])
+        self.assertEqual(rb_rostered[0]["rank"], 20)
+        self.assertIsNone(rb_rostered[1]["rank"])
 
     def test_rostered_includes_status(self):
         resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")

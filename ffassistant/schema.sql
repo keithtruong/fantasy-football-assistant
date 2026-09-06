@@ -142,6 +142,19 @@ CREATE TABLE IF NOT EXISTS player_role_tags (
 );
 
 -- ============================================================
+-- Season calendar
+-- ============================================================
+
+-- One row per season: the date week 1 begins, used to compute "current NFL
+-- week" (ffassistant/season.py) for scheduled/on-demand in-season refreshes.
+-- Keith sets this once per year — see CLAUDE.md's year-over-year maintenance
+-- checklist.
+CREATE TABLE IF NOT EXISTS season_settings (
+    season              INTEGER PRIMARY KEY,
+    week1_start_date    TEXT NOT NULL  -- ISO date (YYYY-MM-DD), the Tuesday week 1 begins
+);
+
+-- ============================================================
 -- NFL team reference data (static, one-time-per-season imports)
 -- ============================================================
 

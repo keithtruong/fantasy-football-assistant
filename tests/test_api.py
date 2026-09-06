@@ -1,3 +1,4 @@
+import datetime
 import json
 import sqlite3
 import tempfile
@@ -292,6 +293,35 @@ class TestLeagueSettingsApi(ApiTestCase):
     def test_resync_404_for_missing_league(self):
         resp = self.client.post("/api/leagues/999/sync", json={})
         self.assertEqual(resp.status_code, 404)
+
+    @patch("ffassistant.ingest.sleeper.sync_league")
+    def test_resync_auto_populates_current_week_from_season_settings(self, mock_sync):
+        # A week1_start_date safely in the past relative to "today" so this
+        # doesn't depend on when the test happens to run.
+        past_monday = datetime.date.today() - datetime.timedelta(days=30)
+        self.client.put("/api/season/2026", json={"week1_start_date": past_monday.isoformat()})
+
+        resp = self.client.post("/api/leagues/1/sync", json={"season": 2026})
+        self.assertEqual(resp.status_code, 200)
+        _args, kwargs = mock_sync.call_args
+        self.assertIsNotNone(kwargs["week"])
+        self.assertEqual(resp.get_json()["week"], kwargs["week"])
+
+    @patch("ffassistant.ingest.sleeper.sync_league")
+    def test_resync_week_is_none_before_season_settings_configured(self, mock_sync):
+        resp = self.client.post("/api/leagues/1/sync", json={"season": 2026})
+        self.assertEqual(resp.status_code, 200)
+        _args, kwargs = mock_sync.call_args
+        self.assertIsNone(kwargs["week"])
+
+    @patch("ffassistant.ingest.sleeper.sync_league")
+    def test_resync_explicit_week_overrides_computed_week(self, mock_sync):
+        self.client.put("/api/season/2026", json={"week1_start_date": "2026-09-09"})
+
+        resp = self.client.post("/api/leagues/1/sync", json={"season": 2026, "week": 5})
+        self.assertEqual(resp.status_code, 200)
+        _args, kwargs = mock_sync.call_args
+        self.assertEqual(kwargs["week"], 5)
 
     def test_update_team_draft_position(self):
         resp = self.client.put("/api/leagues/1/teams/1", json={"draft_position": 4})

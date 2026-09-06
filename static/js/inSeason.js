@@ -25,10 +25,22 @@ export async function renderInSeasonView(container, state) {
   const data = await api.getInSeason(state.leagueId, view, state.season, view === "weekly" ? state.week : null);
 
   const wrap = el("div", "in-season-view");
+  wrap.appendChild(buildColumnLabels());
   for (const position of positions) {
     wrap.appendChild(buildPositionSection(position, data[position]));
   }
   container.appendChild(wrap);
+}
+
+function buildColumnLabels() {
+  const row = el("div", "in-season-column-labels");
+  const rostered = document.createElement("span");
+  rostered.textContent = "Rostered";
+  const available = document.createElement("span");
+  available.textContent = "Available";
+  row.appendChild(rostered);
+  row.appendChild(available);
+  return row;
 }
 
 function buildPositionSection(position, group) {
@@ -42,18 +54,15 @@ function buildPositionSection(position, group) {
   section.appendChild(heading);
 
   const columns = el("div", "in-season-columns");
-  columns.appendChild(buildColumn("Rostered (worst first)", group.rostered, "rostered"));
-  columns.appendChild(buildColumn("Available", group.available, "available"));
+  columns.appendChild(buildColumn(group.rostered, "rostered"));
+  columns.appendChild(buildColumn(group.available, "available"));
   section.appendChild(columns);
 
   return section;
 }
 
-function buildColumn(title, players, kind) {
+function buildColumn(players, kind) {
   const col = el("div", "in-season-column");
-  const heading = document.createElement("h4");
-  heading.textContent = title;
-  col.appendChild(heading);
 
   const list = el("ol", "in-season-player-list");
   if (players.length === 0) {

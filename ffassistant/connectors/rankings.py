@@ -119,6 +119,40 @@ def get_draft_rankings(scoring_format: str) -> list[dict]:
     return rankings
 
 
+def get_ros_rankings(scoring_format: str) -> list[dict]:
+    """Fetch the rest-of-season Top-N for one scoring format (see .rankings_config.json's
+    ros_urls keys). Not live/verified against the real provider page yet — built as the
+    same cookie-gated, embedded-JSON pattern as get_draft_rankings (the closest existing
+    analog) since that's the provider's page family this content most likely belongs to.
+    If the real page turns out to use a different shape, only this function and the
+    ros_urls config key should need to change — sync_ros_rankings and everything above
+    it in the call chain are format-agnostic.
+
+    Returns a list of dicts: full_name, position, nfl_team, rank.
+    """
+    config = get_rankings_config()
+    url = config["ros_urls"][scoring_format]
+    text = _fetch_with_cookie(url)
+
+    rows = _extract_rows(text)
+
+    rankings = []
+    for row in rows:
+        player = row.get("player")
+        rank = row.get("etrRank")
+        if not player or rank in (None, ""):
+            continue
+        rankings.append(
+            {
+                "full_name": player,
+                "position": (row.get("position") or "").upper() or None,
+                "nfl_team": (row.get("team") or "").upper() or None,
+                "rank": int(rank),
+            }
+        )
+    return rankings
+
+
 TIER_POSITIONS = ["QB", "RB", "WR", "TE"]  # no tier pages published for K/DST
 
 _TIER_HEADER = re.compile(r"^Tier (\d+):\s*(.*)$")

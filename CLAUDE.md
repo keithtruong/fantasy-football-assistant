@@ -24,7 +24,7 @@ This tool surfaces suggestions (waiver targets, lineup swaps) but never executes
 
 ## App-level navigation
 
-Five peer sections, not nested inside each other: **Draft | In-season | Exposure | League settings | W-L**.
+Five peer sections, not nested inside each other: **Draft | In-season | Exposure | League settings | W-L**. Draft and In-season swap places in the nav depending on whether the season is currently active (per `ffassistant.season.current_week()`) — Draft leads preseason, In-season leads once weeks 1-17 are underway — since whichever one is actually actionable right now should lead; Exposure stays the pivot between them since it's relevant year-round either way, and League settings/W-L (low-frequency admin/reference) stay last regardless.
 
 - **League settings** is the shared config (league name, platform, scoring, team count, roster construction/starters-per-position, rounds) that Draft, In-season, and W-L all read from — one source, not per-module copies. Low-frequency section (setup/edit), not a daily-use view. Formalizes the legacy "Settings" sheet's role.
 - **Exposure** (player/team concentration across all 10 leagues) is cross-league by design — no league or year selector. Matters year-round (post-draft trades/waivers too), not just during drafts, which is why it isn't nested inside Draft. Not yet designed in detail beyond this scoping.
@@ -51,8 +51,8 @@ Built around Keith's actual weekly routine: Tuesday night waiver prep (before th
 **No separate lineup-setting or diff screen.** Thursday/Sunday/Monday re-checks reuse the same Weekly view, just reopened with refreshed data — the Weekly view already is the lineup tool, since Keith sets the actual lineup in the platform itself.
 
 **List behavior:**
-- "Worst rostered players" sorts by raw rank, worst first — no extra tie-breaking needed.
-- Unranked players (injured/suspended that week) must still appear, flagged by status rather than dropped. Needs a player-status field per roster spot — likely from platform roster data, not the rankings provider; unverified which platforms expose this cleanly, check during connector build.
+- Both Rostered and Available sort best-first (lowest rank first) — no extra tie-breaking needed.
+- Unranked players (injured/suspended that week) must still appear, flagged by status rather than dropped, sorted to the bottom of Rostered since there's no rank to place them by. Player status comes from platform roster data (not the rankings provider) — confirmed available from all three platforms (ESPN, Yahoo, Sleeper) and populated automatically on every roster resync via the season's current week (see "In-season automation").
 - The "Available" list is never gated by whether it beats the roster — always shows the best-ranked available options, useful for depth/bye visibility even when nothing there is actually an upgrade.
 - A visual indicator highlights when an available player's rank beats one of the lowest-ranked rostered players at that position (unranked/injured rostered players count as automatically beaten).
 - Swap-candidate judgment calls are shown as plain side-by-side numbers, not a computed threshold — same philosophy as the draft tool's ADP lookahead.

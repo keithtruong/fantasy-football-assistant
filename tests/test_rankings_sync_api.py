@@ -44,6 +44,70 @@ class TestSyncStatusApi(ApiTestCase):
         self.assertIsNone(resp.get_json()["synced_at"])
 
 
+class TestWeeklyRankingsSyncApi(ApiTestCase):
+    @patch("ffassistant.ingest.rankings.sync_weekly_rankings")
+    def test_sync_calls_ingest_and_reports_counts(self, mock_sync):
+        resp = self.client.post("/api/rankings/sync_weekly", json={"season": 2026, "week": 1})
+        self.assertEqual(resp.status_code, 200)
+        args, _kwargs = mock_sync.call_args
+        self.assertEqual((args[1], args[2]), (2026, 1))
+        data = resp.get_json()
+        self.assertIn("player_count", data)
+        self.assertIn("unresolved_count", data)
+
+    def test_missing_week_is_400(self):
+        resp = self.client.post("/api/rankings/sync_weekly", json={"season": 2026})
+        self.assertEqual(resp.status_code, 400)
+
+    @patch("ffassistant.ingest.rankings.sync_weekly_rankings", side_effect=RuntimeError("boom"))
+    def test_sync_failure_returns_502_json(self, _mock):
+        resp = self.client.post("/api/rankings/sync_weekly", json={"season": 2026, "week": 1})
+        self.assertEqual(resp.status_code, 502)
+        self.assertIn("boom", resp.get_json()["description"])
+
+
+class TestWeeklySyncStatusApi(ApiTestCase):
+    def test_missing_week_is_400(self):
+        resp = self.client.get("/api/rankings/sync_status_weekly?season=2026")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_null_when_never_synced(self):
+        resp = self.client.get("/api/rankings/sync_status_weekly?season=2026&week=1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.get_json()["synced_at"])
+
+
+class TestRosRankingsSyncApi(ApiTestCase):
+    @patch("ffassistant.ingest.rankings.sync_ros_rankings")
+    def test_sync_calls_ingest_and_reports_counts(self, mock_sync):
+        resp = self.client.post("/api/rankings/sync_ros", json={"season": 2026, "scoring_format": "full_ppr"})
+        self.assertEqual(resp.status_code, 200)
+        mock_sync.assert_called_once()
+        data = resp.get_json()
+        self.assertIn("player_count", data)
+        self.assertIn("unresolved_count", data)
+
+    @patch("ffassistant.ingest.rankings.sync_ros_rankings", side_effect=RuntimeError("boom"))
+    def test_sync_failure_returns_502_json(self, _mock):
+        resp = self.client.post("/api/rankings/sync_ros", json={"season": 2026})
+        self.assertEqual(resp.status_code, 502)
+        self.assertIn("boom", resp.get_json()["description"])
+
+    @patch("ffassistant.ingest.rankings.sync_ros_rankings")
+    def test_defaults_to_current_year_and_full_ppr(self, mock_sync):
+        resp = self.client.post("/api/rankings/sync_ros", json={})
+        self.assertEqual(resp.status_code, 200)
+        args, _kwargs = mock_sync.call_args
+        self.assertEqual(args[2], "full_ppr")
+
+
+class TestRosSyncStatusApi(ApiTestCase):
+    def test_null_when_never_synced(self):
+        resp = self.client.get("/api/rankings/sync_status_ros?season=2026&scoring_format=full_ppr")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.get_json()["synced_at"])
+
+
 if __name__ == "__main__":
     import unittest
 

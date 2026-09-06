@@ -21,12 +21,68 @@ export async function renderLeagueSettings(container, refreshLeagues) {
   const wrap = document.createElement("div");
   wrap.className = "league-settings";
 
+  wrap.appendChild(await buildSeasonPanel());
   wrap.appendChild(buildAddLeagueForm(refreshLeagues));
   for (const league of leagues) {
     wrap.appendChild(buildLeagueCard(league, refreshLeagues));
   }
 
   container.appendChild(wrap);
+}
+
+async function buildSeasonPanel() {
+  const card = document.createElement("div");
+  card.className = "settings-card";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Season";
+  card.appendChild(heading);
+
+  const help = document.createElement("p");
+  help.className = "form-help";
+  help.textContent =
+    "Set once per year: the date week 1 begins (a Tuesday, matching the weekly waiver-prep cadence). " +
+    "Drives the in-season section's \"current week\" for scheduled and on-demand refreshes.";
+  card.appendChild(help);
+
+  const season = new Date().getFullYear();
+  const current = await api.getSeason(season);
+
+  const form = document.createElement("form");
+  form.className = "add-league-form";
+  form.innerHTML = `
+    <input type="number" name="season" value="${season}" disabled />
+    <input type="date" name="week1_start_date" value="${current.week1_start_date || ""}" required />
+    <button type="submit">Save</button>
+  `;
+
+  const status = document.createElement("div");
+  status.className = "form-status";
+  status.textContent =
+    current.current_week != null
+      ? `Current week: ${current.current_week}`
+      : current.week1_start_date
+        ? "Outside weeks 1-17 (offseason)"
+        : "Not set yet";
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const week1StartDate = form.elements.week1_start_date.value;
+    try {
+      const result = await api.setSeasonWeek1(season, week1StartDate);
+      status.textContent = result.current_week != null
+        ? `Saved — current week: ${result.current_week}`
+        : "Saved — outside weeks 1-17 (offseason)";
+      status.className = "form-status";
+    } catch (err) {
+      status.textContent = `Failed: ${err.message}`;
+      status.className = "form-status form-status-error";
+    }
+  });
+
+  card.appendChild(form);
+  card.appendChild(status);
+  return card;
 }
 
 function buildAddLeagueForm(refreshLeagues) {

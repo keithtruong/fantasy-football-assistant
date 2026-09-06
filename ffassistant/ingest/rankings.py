@@ -89,6 +89,31 @@ def sync_weekly_rankings(conn: sqlite3.Connection, season: int, week: int) -> No
     conn.commit()
 
 
+def sync_ros_rankings(conn: sqlite3.Connection, season: int, scoring_format: str) -> None:
+    """Rest-of-season rankings: no week (schema convention, same as 'draft'), scraped
+    like weekly rankings so a miss is queued for manual review rather than auto-created.
+    """
+    rows = rankings_api.get_ros_rankings(scoring_format)
+
+    # Full-snapshot sync: replace this season/scoring_format's ROS rankings rather
+    # than diffing, since each fetch is a complete refresh.
+    conn.execute(
+        "DELETE FROM rankings WHERE ranking_type = 'ros' AND season = ? AND scoring_format = ?",
+        (season, scoring_format),
+    )
+
+    for row in rows:
+        player_id = match_player(conn, "rankings_provider", row["full_name"], row["position"])
+        if player_id is None:
+            continue  # queued in unresolved_aliases; skip until manually resolved
+        conn.execute(
+            "INSERT INTO rankings (player_id, ranking_type, season, scoring_format, rank) "
+            "VALUES (?, 'ros', ?, ?, ?)",
+            (player_id, season, scoring_format, row["rank"]),
+        )
+    conn.commit()
+
+
 def sync_tiers(conn: sqlite3.Connection, season: int) -> None:
     """Tier is scoring-format-invariant, so this updates every scoring_format row
     already ingested for that player/season's draft rankings — not a separate insert.

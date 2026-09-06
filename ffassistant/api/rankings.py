@@ -74,7 +74,7 @@ def sync_rankings():
         (season, scoring_format),
     ).fetchone()["c"]
     unresolved_count = len(list_unresolved(db, "rankings_provider"))
-    synced_at = _last_synced_at(db, season, scoring_format)
+    synced_at = _last_synced_at(db, "draft", season, scoring_format)
 
     return jsonify(
         {
@@ -91,16 +91,108 @@ def get_sync_status():
     db = get_db()
     season = request.args.get("season", type=int) or datetime.date.today().year
     scoring_format = request.args.get("scoring_format", "full_ppr")
-    return jsonify({"synced_at": _last_synced_at(db, season, scoring_format)})
+    return jsonify({"synced_at": _last_synced_at(db, "draft", season, scoring_format)})
 
 
-def _last_synced_at(db, season, scoring_format):
-    """Draft rankings are a full-replace sync (see sync_draft_rankings), so the
-    newest `fetched_at` among this season/scoring_format's rows is the last
-    time this combination was actually refreshed — no separate log needed."""
-    row = db.execute(
-        "SELECT MAX(fetched_at) AS synced_at FROM rankings WHERE ranking_type = 'draft' "
-        "AND season = ? AND scoring_format = ?",
+@rankings_admin_bp.post("/sync_weekly")
+def sync_weekly_rankings():
+    """On-demand refresh for the in-season Weekly tab's rank list."""
+    db = get_db()
+    body = request.get_json(silent=True) or {}
+    season = int(body.get("season") or datetime.date.today().year)
+    week = body.get("week")
+    if week is None:
+        abort(400, description="week is required")
+    week = int(week)
+
+    from ffassistant.ingest import rankings as rankings_ingest
+    from ffassistant.name_matching import list_unresolved
+
+    try:
+        rankings_ingest.sync_weekly_rankings(db, season, week)
+    except Exception as e:
+        abort(502, description=f"Weekly rankings sync failed: {e}")
+
+    player_count = db.execute(
+        "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ?",
+        (season, week),
+    ).fetchone()["c"]
+    unresolved_count = len(list_unresolved(db, "rankings_provider"))
+
+    return jsonify(
+        {
+            "player_count": player_count,
+            "unresolved_count": unresolved_count,
+            "synced_at": _last_synced_at_weekly(db, season, week),
+        }
+    )
+
+
+@rankings_admin_bp.get("/sync_status_weekly")
+def get_sync_status_weekly():
+    db = get_db()
+    season = request.args.get("season", type=int) or datetime.date.today().year
+    week = request.args.get("week", type=int)
+    if week is None:
+        abort(400, description="week is required")
+    return jsonify({"synced_at": _last_synced_at_weekly(db, season, week)})
+
+
+@rankings_admin_bp.post("/sync_ros")
+def sync_ros_rankings():
+    """On-demand refresh for the in-season Rest-of-Season tab's rank list."""
+    db = get_db()
+    body = request.get_json(silent=True) or {}
+    season = int(body.get("season") or datetime.date.today().year)
+    scoring_format = body.get("scoring_format", "full_ppr")
+
+    from ffassistant.ingest import rankings as rankings_ingest
+    from ffassistant.name_matching import list_unresolved
+
+    try:
+        rankings_ingest.sync_ros_rankings(db, season, scoring_format)
+    except Exception as e:
+        abort(502, description=f"ROS rankings sync failed: {e}")
+
+    player_count = db.execute(
+        "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'ros' AND season = ? AND scoring_format = ?",
         (season, scoring_format),
+    ).fetchone()["c"]
+    unresolved_count = len(list_unresolved(db, "rankings_provider"))
+
+    return jsonify(
+        {
+            "player_count": player_count,
+            "unresolved_count": unresolved_count,
+            "synced_at": _last_synced_at(db, "ros", season, scoring_format),
+        }
+    )
+
+
+@rankings_admin_bp.get("/sync_status_ros")
+def get_sync_status_ros():
+    db = get_db()
+    season = request.args.get("season", type=int) or datetime.date.today().year
+    scoring_format = request.args.get("scoring_format", "full_ppr")
+    return jsonify({"synced_at": _last_synced_at(db, "ros", season, scoring_format)})
+
+
+def _last_synced_at(db, ranking_type, season, scoring_format):
+    """Draft/ROS rankings are a full-replace sync, so the newest `fetched_at`
+    among this ranking_type/season/scoring_format's rows is the last time this
+    combination was actually refreshed — no separate log needed."""
+    row = db.execute(
+        "SELECT MAX(fetched_at) AS synced_at FROM rankings WHERE ranking_type = ? "
+        "AND season = ? AND scoring_format = ?",
+        (ranking_type, season, scoring_format),
+    ).fetchone()
+    return row["synced_at"]
+
+
+def _last_synced_at_weekly(db, season, week):
+    row = db.execute(
+        "SELECT MAX(fetched_at) AS synced_at FROM rankings WHERE ranking_type = 'weekly' "
+        "AND season = ? AND week = ?",
+        (season, week),
     ).fetchone()
     return row["synced_at"]
