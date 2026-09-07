@@ -23,8 +23,8 @@ FAKE_SETTINGS = {
 }
 
 FAKE_TEAMS = [
-    {"platform_team_id": "1", "team_name": "Keith's Team", "waiver_priority": 2, "player_ids": ["p1", "p2"]},
-    {"platform_team_id": "2", "team_name": "Rival Team", "waiver_priority": 1, "player_ids": ["p3"]},
+    {"platform_team_id": "1", "team_name": "Keith's Team", "waiver_priority": 2, "wins": 3, "losses": 1, "ties": 0, "player_ids": ["p1", "p2"]},
+    {"platform_team_id": "2", "team_name": "Rival Team", "waiver_priority": 1, "wins": 1, "losses": 3, "ties": 0, "player_ids": ["p3"]},
 ]
 
 FAKE_ROSTER_PLAYERS = {
@@ -67,6 +67,78 @@ class TestSyncLeague(unittest.TestCase):
             "INSERT INTO players (player_id, full_name, position) VALUES (10, 'Justin Jefferson', 'WR')"
         )
         self.conn.commit()
+
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_waiver_priority_synced_and_updated_on_resync(self, _mock_settings, *_mocks):
+        with patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS):
+            sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        priorities = {
+            r["platform_team_id"]: r["waiver_priority"] for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(priorities, {"1": 2, "2": 1})
+
+        updated_teams = [dict(t) for t in FAKE_TEAMS]
+        updated_teams[0]["waiver_priority"] = 1
+        updated_teams[1]["waiver_priority"] = 2
+        with patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=updated_teams):
+            sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        priorities = {
+            r["platform_team_id"]: r["waiver_priority"] for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(priorities, {"1": 1, "2": 2})
+
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_record_synced(self, *_mocks):
+        sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        records = {
+            r["platform_team_id"]: (r["wins"], r["losses"], r["ties"])
+            for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(records, {"1": (3, 1, 0), "2": (1, 3, 0)})
+
+    @patch(
+        "ffassistant.ingest.sleeper.sleeper_api.get_matchups",
+        return_value=[
+            {"platform_team_id": "1", "opponent_platform_team_id": "2"},
+            {"platform_team_id": "2", "opponent_platform_team_id": "1"},
+        ],
+    )
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_matchup_synced_when_week_given(self, *_mocks):
+        sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999", season=2026, week=5)
+
+        rows = self.conn.execute(
+            """
+            SELECT t.platform_team_id AS mine, o.platform_team_id AS opponent
+            FROM weekly_matchups wm
+            JOIN teams t ON t.team_id = wm.team_id
+            JOIN teams o ON o.team_id = wm.opponent_team_id
+            WHERE wm.league_id = 1 AND wm.season = 2026 AND wm.week = 5
+            """
+        ).fetchall()
+        pairs = {(r["mine"], r["opponent"]) for r in rows}
+        self.assertEqual(pairs, {("1", "2"), ("2", "1")})
+
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_no_matchup_synced_without_week(self, *_mocks):
+        sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        count = self.conn.execute("SELECT COUNT(*) AS c FROM weekly_matchups").fetchone()["c"]
+        self.assertEqual(count, 0)
 
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
@@ -142,6 +214,7 @@ class TestSyncLeague(unittest.TestCase):
         teams = self.conn.execute("SELECT platform_team_id FROM teams").fetchall()
         self.assertEqual([t["platform_team_id"] for t in teams], ["1"])
 
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_matchups", return_value=[])
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)

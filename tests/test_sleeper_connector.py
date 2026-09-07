@@ -115,5 +115,18 @@ class TestPlayersLookupCache(unittest.TestCase):
             self.assertTrue(cache_path.exists())
 
 
+class TestGetNflState(unittest.TestCase):
+    @patch("ffassistant.connectors.sleeper.requests.get")
+    def test_returns_raw_state(self, mock_get):
+        mock_get.return_value = FakeResponse(
+            {"week": 1, "season_type": "regular", "season": "2026", "season_start_date": "2026-09-09"}
+        )
+        state = sleeper.get_nfl_state()
+        self.assertEqual(state["week"], 1)
+        self.assertEqual(state["season_type"], "regular")
+        self.assertEqual(state["season"], "2026")
+        mock_get.assert_called_once_with(f"{sleeper.BASE_URL}/state/nfl", timeout=10)
+
+
 if __name__ == "__main__":
     unittest.main()

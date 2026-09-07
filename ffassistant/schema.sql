@@ -50,7 +50,9 @@ CREATE TABLE IF NOT EXISTS roster_slots (
 -- order-based pick entry in the draft tool. `team_name` is owned by the
 -- platform sync (overwritten on every resync); `display_name` is Keith's
 -- own override (e.g. the owner's actual name) and is never touched by
--- sync — NULL means "just use team_name".
+-- sync — NULL means "just use team_name". `waiver_priority`/`wins`/`losses`/
+-- `ties` are also platform-owned (refreshed on every resync) — NULL means
+-- "not synced since this column existed", not "no waiver system"/"0-0".
 CREATE TABLE IF NOT EXISTS teams (
     team_id             INTEGER PRIMARY KEY,
     league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
@@ -59,6 +61,10 @@ CREATE TABLE IF NOT EXISTS teams (
     display_name        TEXT,
     is_mine             INTEGER NOT NULL DEFAULT 0 CHECK (is_mine IN (0, 1)),
     draft_position      INTEGER,
+    waiver_priority     INTEGER,
+    wins                INTEGER,
+    losses              INTEGER,
+    ties                INTEGER,
     UNIQUE (league_id, platform_team_id)
 );
 
@@ -120,6 +126,50 @@ CREATE TABLE IF NOT EXISTS player_status (
     status      TEXT NOT NULL CHECK (status IN ('healthy', 'questionable', 'out', 'ir', 'suspended', 'bye')),
     source      TEXT,
     PRIMARY KEY (player_id, season, week)
+);
+
+-- Which team each team plays in a given week, for the in-season "this week's
+-- opponent" display. One row per team per week (both sides of a pairing
+-- stored separately) so a lookup is a plain WHERE team_id = ?. Populated
+-- from platform roster syncs alongside player_status, same "only when a week
+-- is given" convention.
+CREATE TABLE IF NOT EXISTS weekly_matchups (
+    league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
+    season              INTEGER NOT NULL,
+    week                INTEGER NOT NULL,
+    team_id             INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
+    opponent_team_id    INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
+    PRIMARY KEY (league_id, season, week, team_id)
+);
+
+-- Player news headlines, extracted and matched from NBC Sports' "Rotoworld"
+-- player-news archive (not the rankings provider, and not subject to its
+-- confidentiality rule — a public source). Global per player, not per
+-- league/season/week — a full-replace sync like rankings/tiers, deleting and
+-- re-inserting whatever the source currently matches to a canonical player.
+-- Extraction (headline/analysis/category/etc. out of the scraped page) and
+-- the digest below are both done by Claude — see ffassistant/claude_news.py —
+-- but matching a name to player_id here stays entirely deterministic, per
+-- CLAUDE.md's player-name-matching rule.
+CREATE TABLE IF NOT EXISTS player_news (
+    player_id       INTEGER NOT NULL REFERENCES players (player_id) ON DELETE CASCADE,
+    headline        TEXT NOT NULL,
+    analysis        TEXT,
+    category        TEXT,
+    source          TEXT,
+    link            TEXT NOT NULL,
+    published_at    TEXT,
+    fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (player_id, link)
+);
+
+-- One short Claude-generated "what's happened in the past few days" digest
+-- per player, synthesized from that player's player_news rows above.
+-- Full-replaced on every news sync, same as player_news itself.
+CREATE TABLE IF NOT EXISTS player_news_digest (
+    player_id       INTEGER PRIMARY KEY REFERENCES players (player_id) ON DELETE CASCADE,
+    digest          TEXT NOT NULL,
+    generated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Keith's own manual "target"/"avoid" call on a player, independent of rank —

@@ -60,7 +60,8 @@ def get_league_settings(
 def get_teams(
     league_id: int, year: int, espn_s2: str | None = None, swid: str | None = None
 ) -> list[dict]:
-    """One entry per team: platform_team_id, team_name, waiver_priority, and resolved roster players."""
+    """One entry per team: platform_team_id, team_name, waiver_priority, wins/losses/ties,
+    and resolved roster players."""
     league = _connect(league_id, year, espn_s2, swid)
 
     teams = []
@@ -70,6 +71,9 @@ def get_teams(
                 "platform_team_id": str(team.team_id),
                 "team_name": team.team_name,
                 "waiver_priority": team.waiver_rank,
+                "wins": team.wins,
+                "losses": team.losses,
+                "ties": team.ties,
                 "players": [
                     {
                         "source_player_id": str(player.playerId),
@@ -83,3 +87,23 @@ def get_teams(
             }
         )
     return teams
+
+
+def get_matchups(
+    league_id: int, year: int, week: int, espn_s2: str | None = None, swid: str | None = None
+) -> list[dict]:
+    """This week's opponent pairings, one entry per side: {platform_team_id, opponent_platform_team_id}.
+    A bye week (no opponent on one side) is simply omitted rather than paired with a placeholder.
+    """
+    league = _connect(league_id, year, espn_s2, swid)
+    matchups = league.scoreboard(week=week)
+
+    pairs = []
+    for matchup in matchups:
+        home = getattr(matchup, "home_team", None)
+        away = getattr(matchup, "away_team", None)
+        if home is None or away is None:
+            continue  # bye week — one side has no team to pair with
+        pairs.append({"platform_team_id": str(home.team_id), "opponent_platform_team_id": str(away.team_id)})
+        pairs.append({"platform_team_id": str(away.team_id), "opponent_platform_team_id": str(home.team_id)})
+    return pairs

@@ -25,6 +25,8 @@ export async function renderInSeasonView(container, state) {
   const data = await api.getInSeason(state.leagueId, view, state.season, view === "weekly" ? state.week : null);
 
   const wrap = el("div", "in-season-view");
+  const generalInfo = buildGeneralInfo(data);
+  if (generalInfo) wrap.appendChild(generalInfo);
   wrap.appendChild(buildColumnLabels());
   for (const position of positions) {
     wrap.appendChild(buildPositionSection(position, data[position]));
@@ -32,11 +34,95 @@ export async function renderInSeasonView(container, state) {
   container.appendChild(wrap);
 }
 
+function formatRecord(record) {
+  if (record.wins == null) return "record unknown";
+  return record.ties ? `${record.wins}-${record.losses}-${record.ties}` : `${record.wins}-${record.losses}`;
+}
+
+// One card for everything that isn't a per-player rank: record, this week's
+// opponent, waiver priority, and news on rostered players. Each line is
+// omitted individually when unknown (not yet synced) rather than shown blank
+// — and the whole card is skipped if nothing is known yet.
+function buildGeneralInfo(data) {
+  const hasRecord = data.record && data.record.wins != null;
+  const hasAnything = hasRecord || data.opponent != null || data.waiver_priority != null || data.player_news.length > 0;
+  if (!hasAnything) return null;
+
+  const card = el("div", "in-season-info-card");
+  const title = document.createElement("h3");
+  title.textContent = "This Week";
+  card.appendChild(title);
+
+  if (hasRecord) {
+    card.appendChild(buildInfoLine(`Your record: ${formatRecord(data.record)}`));
+  }
+  if (data.opponent) {
+    card.appendChild(
+      buildInfoLine(`Opponent: ${data.opponent.team_name} (${formatRecord(data.opponent)})`)
+    );
+  }
+  if (data.waiver_priority != null) {
+    card.appendChild(buildInfoLine(`Waiver priority: #${data.waiver_priority}`));
+  }
+  if (data.player_news.length > 0) {
+    card.appendChild(buildPlayerNews(data.player_news));
+  }
+  return card;
+}
+
+function buildInfoLine(text) {
+  const line = el("div", "in-season-info-line");
+  line.textContent = text;
+  return line;
+}
+
+// `players` is one entry per rostered player with a digest: {player_id,
+// full_name, digest, items}. The digest (a Claude-generated summary of that
+// player's last few days — see ffassistant.claude_news) is the main text;
+// the underlying items are secondary, shown as a couple of clickable source
+// links beneath rather than as the primary content.
+function buildPlayerNews(players) {
+  const wrap = el("div", "in-season-news");
+  const heading = document.createElement("h4");
+  heading.textContent = "Player News";
+  wrap.appendChild(heading);
+
+  const list = el("ul", "in-season-news-list");
+  for (const player of players) {
+    const li = document.createElement("li");
+    li.className = "in-season-news-player";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "in-season-news-name";
+    nameSpan.textContent = `${player.full_name}: `;
+    li.appendChild(nameSpan);
+    li.appendChild(document.createTextNode(player.digest));
+
+    if (player.items.length > 0) {
+      const sources = el("div", "in-season-news-sources");
+      player.items.slice(0, 2).forEach((item, i) => {
+        if (i > 0) sources.appendChild(document.createTextNode(" · "));
+        const link = document.createElement("a");
+        link.href = item.link;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = item.headline;
+        sources.appendChild(link);
+      });
+      li.appendChild(sources);
+    }
+
+    list.appendChild(li);
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
 function buildColumnLabels() {
   const row = el("div", "in-season-column-labels");
-  const rostered = document.createElement("span");
+  const rostered = document.createElement("h3");
   rostered.textContent = "Rostered";
-  const available = document.createElement("span");
+  const available = document.createElement("h3");
   available.textContent = "Available";
   row.appendChild(rostered);
   row.appendChild(available);

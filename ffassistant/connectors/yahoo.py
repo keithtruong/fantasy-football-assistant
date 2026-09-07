@@ -103,9 +103,15 @@ def get_league_settings(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> dict:
 
 
 def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
-    """One entry per team: platform_team_id, team_name, waiver_priority, and resolved roster players."""
+    """One entry per team: platform_team_id, team_name, waiver_priority, wins/losses/ties,
+    and resolved roster players.
+
+    Wins/losses/ties aren't in teams()'s own metadata — merged in from standings()
+    by team_key, which uses the same keys as teams().
+    """
     league = _connect(league_id, oauth_path)
     teams_meta = league.teams()
+    outcomes_by_team_key = {s["team_key"]: s.get("outcome_totals", {}) for s in league.standings()}
 
     rosters = {team_key: league.to_team(team_key).roster() for team_key in teams_meta}
 
@@ -114,11 +120,15 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
 
     teams = []
     for team_key, meta in teams_meta.items():
+        outcomes = outcomes_by_team_key.get(team_key, {})
         teams.append(
             {
                 "platform_team_id": str(meta["team_id"]),
                 "team_name": meta["name"],
                 "waiver_priority": meta.get("waiver_priority"),
+                "wins": int(outcomes["wins"]) if outcomes.get("wins") is not None else None,
+                "losses": int(outcomes["losses"]) if outcomes.get("losses") is not None else None,
+                "ties": int(outcomes["ties"]) if outcomes.get("ties") is not None else None,
                 "players": [
                     {
                         "source_player_id": str(p["player_id"]),
@@ -132,6 +142,33 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
             }
         )
     return teams
+
+
+def get_matchups(league_id: str, week: int, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
+    """This week's opponent pairings, one entry per side: {platform_team_id, opponent_platform_team_id}.
+
+    league.matchups() only exposes the raw scoreboard response, so this parses it the same
+    way get_league_settings() parses raw settings — via objectpath, extracting each
+    matchup's pair of team_id values (confirmed by inspection: exactly 2 per matchup;
+    a matchup with any other count is skipped rather than guessed at, likely a bye week).
+    """
+    import objectpath
+
+    league = _connect(league_id, oauth_path)
+    raw = league.matchups(week=week)
+    matchups = list(objectpath.Tree(raw).execute("$..matchups"))[0]
+
+    pairs = []
+    for key, entry in matchups.items():
+        if key == "count":
+            continue
+        team_ids = list(objectpath.Tree(entry["matchup"]).execute("$..team_id"))
+        if len(team_ids) != 2:
+            continue
+        a, b = team_ids
+        pairs.append({"platform_team_id": str(a), "opponent_platform_team_id": str(b)})
+        pairs.append({"platform_team_id": str(b), "opponent_platform_team_id": str(a)})
+    return pairs
 
 
 def _get_pro_teams(league, player_ids: list[int]) -> dict[int, str]:

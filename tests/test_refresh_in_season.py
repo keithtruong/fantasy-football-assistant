@@ -58,11 +58,12 @@ class TestRefreshInSeason(unittest.TestCase):
         self.assertEqual(results, [("Active Sleeper League", False, "boom")])
 
     @patch("ffassistant.ingest.sleeper.sync_league")
+    @patch.object(refresh_in_season, "sync_player_news")
     @patch.object(refresh_in_season, "sync_weekly_rankings")
     @patch.object(refresh_in_season, "sync_ros_rankings")
-    @patch.object(refresh_in_season, "current_week", return_value=3)
+    @patch.object(refresh_in_season, "smart_current_week", return_value=3)
     def test_main_defaults_week_from_current_week_and_exits_zero_on_success(
-        self, mock_current_week, mock_ros, mock_weekly, _mock_sleeper
+        self, mock_current_week, mock_ros, mock_weekly, _mock_news, _mock_sleeper
     ):
         exit_code = refresh_in_season.main(["--season", "2026"])
         self.assertEqual(exit_code, 0)
@@ -70,31 +71,58 @@ class TestRefreshInSeason(unittest.TestCase):
         mock_weekly.assert_called_once_with(self.conn, 2026, 3)
         self.assertEqual(mock_ros.call_count, len(refresh_in_season.SCORING_FORMATS))
 
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
     @patch("ffassistant.ingest.sleeper.sync_league")
+    @patch.object(refresh_in_season, "sync_player_news")
     @patch.object(refresh_in_season, "sync_ros_rankings")
-    def test_main_skips_weekly_when_no_current_week(self, mock_ros, _mock_sleeper):
-        # No season_settings row configured -> current_week() returns None.
+    def test_main_skips_weekly_when_no_current_week(self, mock_ros, _mock_news, _mock_sleeper, _mock_live):
+        # No season_settings row configured and live lookup disabled -> smart_current_week() returns None.
         exit_code = refresh_in_season.main(["--season", "2026"])
         self.assertEqual(exit_code, 0)
         log_text = refresh_in_season.LOG_PATH.read_text()
         self.assertIn("Weekly rankings: SKIPPED", log_text)
 
     @patch("ffassistant.ingest.sleeper.sync_league")
+    @patch.object(refresh_in_season, "sync_player_news")
     @patch.object(refresh_in_season, "sync_weekly_rankings")
     @patch.object(refresh_in_season, "sync_ros_rankings", side_effect=RuntimeError("cookie expired"))
-    def test_main_exits_nonzero_when_anything_fails(self, _mock_ros, _mock_weekly, _mock_sleeper):
+    def test_main_exits_nonzero_when_anything_fails(self, _mock_ros, _mock_weekly, _mock_news, _mock_sleeper):
         exit_code = refresh_in_season.main(["--season", "2026", "--week", "1"])
         self.assertEqual(exit_code, 1)
 
     @patch("ffassistant.ingest.sleeper.sync_league")
+    @patch.object(refresh_in_season, "sync_player_news")
     @patch.object(refresh_in_season, "sync_weekly_rankings")
     @patch.object(refresh_in_season, "sync_ros_rankings")
-    def test_main_writes_to_log_file(self, _mock_ros, _mock_weekly, _mock_sleeper):
+    def test_main_writes_to_log_file(self, _mock_ros, _mock_weekly, _mock_news, _mock_sleeper):
         refresh_in_season.main(["--season", "2026", "--week", "1"])
         self.assertTrue(refresh_in_season.LOG_PATH.exists())
         log_text = refresh_in_season.LOG_PATH.read_text()
         self.assertIn("season=2026 week=1", log_text)
         self.assertIn("Rosters/status: 1/1 leagues synced", log_text)
+
+    @patch.object(refresh_in_season, "sync_player_news")
+    def test_refresh_news_reports_count(self, mock_sync):
+        self.conn.execute(
+            "INSERT INTO players (player_id, full_name, position) VALUES (1, 'Someone', 'WR')"
+        )
+        self.conn.execute(
+            "INSERT INTO player_news (player_id, headline, link) VALUES (1, 'headline', 'https://example.com/1')"
+        )
+        self.conn.commit()
+
+        ok, detail, error = refresh_in_season.refresh_news(self.conn)
+        self.assertTrue(ok)
+        self.assertEqual(detail, "1 headlines matched")
+        self.assertIsNone(error)
+        mock_sync.assert_called_once_with(self.conn)
+
+    @patch.object(refresh_in_season, "sync_player_news", side_effect=RuntimeError("feed down"))
+    def test_refresh_news_reports_failure(self, _mock_sync):
+        ok, detail, error = refresh_in_season.refresh_news(self.conn)
+        self.assertFalse(ok)
+        self.assertIsNone(detail)
+        self.assertEqual(error, "feed down")
 
 
 if __name__ == "__main__":

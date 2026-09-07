@@ -70,14 +70,27 @@ def _sync_teams_and_rosters(
 
     remove_stale_teams(conn, league_id, [team["platform_team_id"] for team in teams])
 
+    team_id_by_platform_id = {}
     for team in teams:
         row = conn.execute(
-            "INSERT INTO teams (league_id, platform_team_id, team_name) VALUES (?, ?, ?) "
-            "ON CONFLICT (league_id, platform_team_id) DO UPDATE SET team_name = excluded.team_name "
+            "INSERT INTO teams (league_id, platform_team_id, team_name, waiver_priority, wins, losses, ties) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (league_id, platform_team_id) DO UPDATE SET "
+            "team_name = excluded.team_name, waiver_priority = excluded.waiver_priority, "
+            "wins = excluded.wins, losses = excluded.losses, ties = excluded.ties "
             "RETURNING team_id",
-            (league_id, team["platform_team_id"], team["team_name"]),
+            (
+                league_id,
+                team["platform_team_id"],
+                team["team_name"],
+                team["waiver_priority"],
+                team["wins"],
+                team["losses"],
+                team["ties"],
+            ),
         ).fetchone()
         team_id = row["team_id"]
+        team_id_by_platform_id[team["platform_team_id"]] = team_id
 
         # Full-snapshot sync: replace roster membership rather than diffing,
         # since we don't have transaction history to attribute adds/drops from yet.
@@ -98,6 +111,23 @@ def _sync_teams_and_rosters(
                     "DO UPDATE SET status = excluded.status, source = excluded.source",
                     (player_id, season, week, status),
                 )
+
+    if week is not None:
+        _sync_matchups(conn, league_id, sleeper_league_id, season, week, team_id_by_platform_id)
+
+
+def _sync_matchups(conn, league_id, sleeper_league_id, season, week, team_id_by_platform_id) -> None:
+    pairs = sleeper_api.get_matchups(sleeper_league_id, week)
+    conn.execute("DELETE FROM weekly_matchups WHERE league_id = ? AND season = ? AND week = ?", (league_id, season, week))
+    for pair in pairs:
+        team_id = team_id_by_platform_id.get(pair["platform_team_id"])
+        opponent_team_id = team_id_by_platform_id.get(pair["opponent_platform_team_id"])
+        if team_id is None or opponent_team_id is None:
+            continue
+        conn.execute(
+            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (?, ?, ?, ?, ?)",
+            (league_id, season, week, team_id, opponent_team_id),
+        )
 
 
 def _resolve_or_create_player(conn: sqlite3.Connection, player_info: dict) -> int:

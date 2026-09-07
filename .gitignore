@@ -9,6 +9,7 @@ Thumbs.db
 # Environments / secrets
 .env
 .env.*
+!.env.example
 *.key
 
 # Yahoo OAuth tokens (rewritten in-place by yahoo_oauth on token refresh)

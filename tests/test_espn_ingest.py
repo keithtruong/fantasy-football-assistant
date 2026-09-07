@@ -27,6 +27,9 @@ FAKE_TEAMS = [
         "platform_team_id": "1",
         "team_name": "Keith's Team",
         "waiver_priority": 2,
+        "wins": 3,
+        "losses": 1,
+        "ties": 0,
         "players": [
             {
                 "source_player_id": "101",
@@ -48,6 +51,9 @@ FAKE_TEAMS = [
         "platform_team_id": "2",
         "team_name": "Rival Team",
         "waiver_priority": 1,
+        "wins": 1,
+        "losses": 3,
+        "ties": 0,
         "players": [
             {
                 "source_player_id": "201",
@@ -101,6 +107,73 @@ class TestSyncLeague(unittest.TestCase):
 
     @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_waiver_priority_synced_and_updated_on_resync(self, *_mocks):
+        espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026)
+
+        priorities = {
+            r["platform_team_id"]: r["waiver_priority"] for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(priorities, {"1": 2, "2": 1})
+
+        # A resync with a changed priority (waiver order rotates week to week)
+        # updates in place rather than leaving the stale value.
+        updated_teams = [dict(t) for t in FAKE_TEAMS]
+        updated_teams[0]["waiver_priority"] = 1
+        updated_teams[1]["waiver_priority"] = 2
+        with patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=updated_teams):
+            espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026)
+
+        priorities = {
+            r["platform_team_id"]: r["waiver_priority"] for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(priorities, {"1": 1, "2": 2})
+
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_record_synced(self, *_mocks):
+        espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026)
+
+        records = {
+            r["platform_team_id"]: (r["wins"], r["losses"], r["ties"])
+            for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(records, {"1": (3, 1, 0), "2": (1, 3, 0)})
+
+    @patch(
+        "ffassistant.ingest.espn.espn_api.get_matchups",
+        return_value=[
+            {"platform_team_id": "1", "opponent_platform_team_id": "2"},
+            {"platform_team_id": "2", "opponent_platform_team_id": "1"},
+        ],
+    )
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_matchup_synced_when_week_given(self, *_mocks):
+        espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026, week=5)
+
+        rows = self.conn.execute(
+            """
+            SELECT t.platform_team_id AS mine, o.platform_team_id AS opponent
+            FROM weekly_matchups wm
+            JOIN teams t ON t.team_id = wm.team_id
+            JOIN teams o ON o.team_id = wm.opponent_team_id
+            WHERE wm.league_id = 1 AND wm.season = 2026 AND wm.week = 5
+            """
+        ).fetchall()
+        pairs = {(r["mine"], r["opponent"]) for r in rows}
+        self.assertEqual(pairs, {("1", "2"), ("2", "1")})
+
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_no_matchup_synced_without_week(self, *_mocks):
+        espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026)
+
+        count = self.conn.execute("SELECT COUNT(*) AS c FROM weekly_matchups").fetchone()["c"]
+        self.assertEqual(count, 0)
+
+    @patch("ffassistant.ingest.espn.espn_api.get_matchups", return_value=[])
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
     def test_sync_with_week_records_injury_status(self, *_mocks):
         espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026, week=5)
 
@@ -125,6 +198,7 @@ class TestSyncLeague(unittest.TestCase):
         ).fetchone()["status"]
         self.assertEqual(out_status, "out")
 
+    @patch("ffassistant.ingest.espn.espn_api.get_matchups", return_value=[])
     @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
     def test_resync_replaces_roster_without_duplicating_teams(self, *_mocks):

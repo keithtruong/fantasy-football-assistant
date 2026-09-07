@@ -84,6 +84,24 @@ class LeaguesPlatformMigrationTestCase(unittest.TestCase):
         self.assertEqual(manual["name"], "Placeholder")
         conn.close()
 
+    def test_init_db_adds_waiver_priority_column(self):
+        self._seed_old_schema()
+        init_db(self.db_path)
+
+        conn = get_connection(self.db_path)
+        # Pre-existing team row survived, and the new column is present (NULL
+        # until the next resync populates it).
+        team = conn.execute("SELECT * FROM teams WHERE team_id = 1").fetchone()
+        self.assertEqual(team["team_name"], "Team A")
+        self.assertIsNone(team["waiver_priority"])
+
+        conn.execute("UPDATE teams SET waiver_priority = 3 WHERE team_id = 1")
+        conn.commit()
+        self.assertEqual(
+            conn.execute("SELECT waiver_priority FROM teams WHERE team_id = 1").fetchone()["waiver_priority"], 3
+        )
+        conn.close()
+
     def test_init_db_is_idempotent(self):
         self._seed_old_schema()
         init_db(self.db_path)

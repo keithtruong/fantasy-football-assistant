@@ -294,9 +294,11 @@ class TestLeagueSettingsApi(ApiTestCase):
         resp = self.client.post("/api/leagues/999/sync", json={})
         self.assertEqual(resp.status_code, 404)
 
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
     @patch("ffassistant.ingest.sleeper.sync_league")
-    def test_resync_auto_populates_current_week_from_season_settings(self, mock_sync):
-        # A week1_start_date safely in the past relative to "today" so this
+    def test_resync_auto_populates_current_week_from_season_settings(self, mock_sync, _mock_live):
+        # Live lookup disabled so this genuinely exercises the week1_start_date
+        # fallback — a start date safely in the past relative to "today" so this
         # doesn't depend on when the test happens to run.
         past_monday = datetime.date.today() - datetime.timedelta(days=30)
         self.client.put("/api/season/2026", json={"week1_start_date": past_monday.isoformat()})
@@ -307,8 +309,9 @@ class TestLeagueSettingsApi(ApiTestCase):
         self.assertIsNotNone(kwargs["week"])
         self.assertEqual(resp.get_json()["week"], kwargs["week"])
 
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
     @patch("ffassistant.ingest.sleeper.sync_league")
-    def test_resync_week_is_none_before_season_settings_configured(self, mock_sync):
+    def test_resync_week_is_none_before_season_settings_configured(self, mock_sync, _mock_live):
         resp = self.client.post("/api/leagues/1/sync", json={"season": 2026})
         self.assertEqual(resp.status_code, 200)
         _args, kwargs = mock_sync.call_args

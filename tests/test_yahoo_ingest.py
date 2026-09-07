@@ -27,6 +27,9 @@ FAKE_TEAMS = [
         "platform_team_id": "5",
         "team_name": "Long Balls",
         "waiver_priority": 9,
+        "wins": 3,
+        "losses": 1,
+        "ties": 0,
         "players": [
             {
                 "source_player_id": "34218",
@@ -48,6 +51,9 @@ FAKE_TEAMS = [
         "platform_team_id": "6",
         "team_name": "Rival Team",
         "waiver_priority": 1,
+        "wins": 1,
+        "losses": 3,
+        "ties": 0,
         "players": [
             {
                 "source_player_id": "201",
@@ -98,6 +104,71 @@ class TestSyncLeague(unittest.TestCase):
 
     @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_waiver_priority_synced_and_updated_on_resync(self, *_mocks):
+        yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025)
+
+        priorities = {
+            r["platform_team_id"]: r["waiver_priority"] for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(priorities, {"5": 9, "6": 1})
+
+        updated_teams = [dict(t) for t in FAKE_TEAMS]
+        updated_teams[0]["waiver_priority"] = 1
+        updated_teams[1]["waiver_priority"] = 9
+        with patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=updated_teams):
+            yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025)
+
+        priorities = {
+            r["platform_team_id"]: r["waiver_priority"] for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(priorities, {"5": 1, "6": 9})
+
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_record_synced(self, *_mocks):
+        yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025)
+
+        records = {
+            r["platform_team_id"]: (r["wins"], r["losses"], r["ties"])
+            for r in self.conn.execute("SELECT * FROM teams")
+        }
+        self.assertEqual(records, {"5": (3, 1, 0), "6": (1, 3, 0)})
+
+    @patch(
+        "ffassistant.ingest.yahoo.yahoo_api.get_matchups",
+        return_value=[
+            {"platform_team_id": "5", "opponent_platform_team_id": "6"},
+            {"platform_team_id": "6", "opponent_platform_team_id": "5"},
+        ],
+    )
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_matchup_synced_when_week_given(self, *_mocks):
+        yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025, week=10)
+
+        rows = self.conn.execute(
+            """
+            SELECT t.platform_team_id AS mine, o.platform_team_id AS opponent
+            FROM weekly_matchups wm
+            JOIN teams t ON t.team_id = wm.team_id
+            JOIN teams o ON o.team_id = wm.opponent_team_id
+            WHERE wm.league_id = 1 AND wm.season = 2025 AND wm.week = 10
+            """
+        ).fetchall()
+        pairs = {(r["mine"], r["opponent"]) for r in rows}
+        self.assertEqual(pairs, {("5", "6"), ("6", "5")})
+
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_no_matchup_synced_without_week(self, *_mocks):
+        yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025)
+
+        count = self.conn.execute("SELECT COUNT(*) AS c FROM weekly_matchups").fetchone()["c"]
+        self.assertEqual(count, 0)
+
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_matchups", return_value=[])
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
     def test_sync_with_week_records_injury_status(self, *_mocks):
         yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025, week=10)
 
@@ -110,6 +181,7 @@ class TestSyncLeague(unittest.TestCase):
         ).fetchone()["status"]
         self.assertEqual(status, "questionable")
 
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_matchups", return_value=[])
     @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
     def test_resync_replaces_roster_without_duplicating_teams(self, *_mocks):

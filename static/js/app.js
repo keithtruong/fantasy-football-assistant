@@ -52,6 +52,8 @@ const refreshWeeklyRankingsButton = document.getElementById("refresh-weekly-rank
 const weeklyRankingsSyncStatus = document.getElementById("weekly-rankings-sync-status");
 const refreshRosRankingsButton = document.getElementById("refresh-ros-rankings-button");
 const rosRankingsSyncStatus = document.getElementById("ros-rankings-sync-status");
+const refreshNewsButton = document.getElementById("refresh-news-button");
+const newsSyncStatus = document.getElementById("news-sync-status");
 
 let leaguesById = {};
 
@@ -222,9 +224,20 @@ async function refreshRosSyncStatus() {
   }
 }
 
+async function refreshNewsSyncStatus() {
+  try {
+    const status = await api.getNewsSyncStatus();
+    newsSyncStatus.textContent = formatSyncedAt(status.synced_at);
+    newsSyncStatus.className = "rankings-sync-status";
+  } catch {
+    // Non-critical — leave whatever status text was already showing.
+  }
+}
+
 // Only the active in-season sub-tab's refresh control is relevant — Schedule
-// needs neither, and showing both weekly's and ROS's buttons together just
-// invites clicking the wrong one for the view you're looking at.
+// needs none of these, and showing weekly's and ROS's buttons together just
+// invites clicking the wrong one for the view you're looking at. Player news
+// isn't week/format-scoped, so it's shown for either Weekly or ROS.
 function updateInSeasonControlsVisibility() {
   const showWeekly = state.inSeasonTab === "weekly";
   const showRos = state.inSeasonTab === "ros";
@@ -232,6 +245,9 @@ function updateInSeasonControlsVisibility() {
   weeklyRankingsSyncStatus.style.display = showWeekly ? "" : "none";
   refreshRosRankingsButton.style.display = showRos ? "" : "none";
   rosRankingsSyncStatus.style.display = showRos ? "" : "none";
+  const showNews = showWeekly || showRos;
+  refreshNewsButton.style.display = showNews ? "" : "none";
+  newsSyncStatus.style.display = showNews ? "" : "none";
 }
 
 function wireTabGroup(selector, dataAttr, stateKey) {
@@ -256,6 +272,7 @@ function init() {
         updateInSeasonControlsVisibility();
         refreshWeeklySyncStatus();
         refreshRosSyncStatus();
+        refreshNewsSyncStatus();
       }
     });
   });
@@ -343,6 +360,24 @@ function init() {
     }
   });
 
+  refreshNewsButton.addEventListener("click", async () => {
+    refreshNewsButton.disabled = true;
+    newsSyncStatus.textContent = "Refreshing…";
+    newsSyncStatus.className = "rankings-sync-status";
+    try {
+      const result = await api.syncPlayerNews();
+      newsSyncStatus.textContent =
+        `${formatSyncedAt(result.synced_at)} — ${result.headline_count} headlines, ${result.player_count} players`;
+      newsSyncStatus.className = "rankings-sync-status";
+      await renderActive();
+    } catch (err) {
+      newsSyncStatus.textContent = err.message;
+      newsSyncStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshNewsButton.disabled = false;
+    }
+  });
+
   wireTabGroup("#tab-bar .tab-button", "tab", "activeTab");
   wireTabGroup("#in-season-tab-bar .tab-button", "inSeasonTab", "inSeasonTab");
   wireTabGroup("#wl-tab-bar .tab-button", "wlTab", "wlTab");
@@ -352,6 +387,7 @@ function init() {
       updateInSeasonControlsVisibility();
       refreshWeeklySyncStatus();
       refreshRosSyncStatus();
+      refreshNewsSyncStatus();
     });
   });
   updateInSeasonControlsVisibility();
@@ -371,6 +407,7 @@ function init() {
   Promise.all([reloadLeagues(), initCurrentWeek()]).then(() => {
     refreshWeeklySyncStatus();
     refreshRosSyncStatus();
+    refreshNewsSyncStatus();
   });
 }
 

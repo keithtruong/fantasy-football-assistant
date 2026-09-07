@@ -20,6 +20,11 @@ def get_in_season(league_id):
     players still appear (never dropped), sorted to the bottom since there's no
     rank to sort them by. Available players are shown ungated by whether they'd
     actually be an upgrade.
+
+    Response is keyed by position, plus top-level "waiver_priority", "record",
+    "opponent", and "player_news" for Keith's team — all None/empty if not yet
+    synced (record/opponent/waiver_priority need a platform resync; player_news
+    needs a news sync — see ffassistant.ingest.news).
     """
     db = get_db()
     view = request.args.get("view", "weekly")
@@ -35,7 +40,8 @@ def get_in_season(league_id):
     ranking_type = "weekly" if view == "weekly" else "ros"
 
     my_team = db.execute(
-        "SELECT team_id FROM teams WHERE league_id = ? AND is_mine = 1", (league_id,)
+        "SELECT team_id, waiver_priority, wins, losses, ties FROM teams WHERE league_id = ? AND is_mine = 1",
+        (league_id,),
     ).fetchone()
     if my_team is None:
         abort(400, description="No team is marked as yours in this league yet — set it in League Settings")
@@ -63,7 +69,73 @@ def get_in_season(league_id):
 
         result[position] = {"rostered": rostered, "available": available}
 
+    result["waiver_priority"] = my_team["waiver_priority"]
+    result["record"] = {"wins": my_team["wins"], "losses": my_team["losses"], "ties": my_team["ties"]}
+
+    # ROS has no week param of its own — fall back to the season's current week
+    # (same signal the in-season refresh pipeline uses) to know which matchup to show.
+    matchup_week = week
+    if matchup_week is None:
+        from ffassistant.season import smart_current_week
+
+        matchup_week = smart_current_week(db, season)
+    result["opponent"] = _fetch_opponent(db, league_id, season, matchup_week, my_team_id)
+
+    result["player_news"] = _fetch_player_news(db, my_team_id)
+
     return jsonify(result)
+
+
+def _fetch_opponent(db, league_id, season, week, my_team_id):
+    if week is None:
+        return None
+    row = db.execute(
+        """
+        SELECT o.team_name, o.wins, o.losses, o.ties
+        FROM weekly_matchups wm
+        JOIN teams o ON o.team_id = wm.opponent_team_id
+        WHERE wm.league_id = ? AND wm.season = ? AND wm.week = ? AND wm.team_id = ?
+        """,
+        (league_id, season, week, my_team_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"team_name": row["team_name"], "wins": row["wins"], "losses": row["losses"], "ties": row["ties"]}
+
+
+def _fetch_player_news(db, team_id):
+    """One entry per rostered player who has a digest, with their underlying
+    source items as supporting links. The digest (from ffassistant.claude_news,
+    synthesized across that player's recent items) is the headline fact; items
+    are secondary, for click-through to the original source.
+    """
+    digest_rows = db.execute(
+        """
+        SELECT pnd.player_id, p.full_name, pnd.digest
+        FROM player_news_digest pnd
+        JOIN roster_spots rs ON rs.player_id = pnd.player_id
+        JOIN players p ON p.player_id = pnd.player_id
+        WHERE rs.team_id = ?
+        """,
+        (team_id,),
+    ).fetchall()
+
+    result = []
+    for row in digest_rows:
+        item_rows = db.execute(
+            "SELECT headline, link, category, published_at FROM player_news "
+            "WHERE player_id = ? ORDER BY published_at IS NULL, published_at DESC",
+            (row["player_id"],),
+        ).fetchall()
+        result.append(
+            {
+                "player_id": row["player_id"],
+                "full_name": row["full_name"],
+                "digest": row["digest"],
+                "items": [dict(r) for r in item_rows],
+            }
+        )
+    return result
 
 
 def _fetch_rostered(db, team_id, ranking_type, season, week):

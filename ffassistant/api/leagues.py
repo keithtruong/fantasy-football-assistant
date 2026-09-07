@@ -191,13 +191,13 @@ def resync_league(league_id):
 
 
 def _current_week(db, season):
-    """Wraps ffassistant.season.current_week so a resync auto-populates
+    """Wraps ffassistant.season.smart_current_week so a resync auto-populates
     player_status whenever the season's week1_start_date is set and today
     falls within weeks 1-17 — no explicit `week` needed from the caller.
     """
     from ffassistant import season as season_mod
 
-    return season_mod.current_week(db, season)
+    return season_mod.smart_current_week(db, season)
 
 
 def _sync_from_platform(db, league_id, platform, platform_league_id, season, week=None):

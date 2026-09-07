@@ -1,8 +1,11 @@
+from unittest.mock import patch
+
 from tests.test_api import ApiTestCase
 
 
 class TestSeasonApi(ApiTestCase):
-    def test_get_before_anything_set(self):
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
+    def test_get_before_anything_set(self, _mock_live):
         resp = self.client.get("/api/season/2026")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()

@@ -41,8 +41,9 @@ async function buildSeasonPanel() {
   const help = document.createElement("p");
   help.className = "form-help";
   help.textContent =
-    "Set once per year: the date week 1 begins (a Tuesday, matching the weekly waiver-prep cadence). " +
-    "Drives the in-season section's \"current week\" for scheduled and on-demand refreshes.";
+    "The in-season section figures out the current week automatically (a live NFL-week lookup — " +
+    "no setup needed). This date is only a manual fallback for if that lookup is ever unreachable: " +
+    "the Tuesday week 1 begins, matching the weekly waiver-prep cadence.";
   card.appendChild(help);
 
   const season = new Date().getFullYear();
@@ -61,9 +62,7 @@ async function buildSeasonPanel() {
   status.textContent =
     current.current_week != null
       ? `Current week: ${current.current_week}`
-      : current.week1_start_date
-        ? "Outside weeks 1-17 (offseason)"
-        : "Not set yet";
+      : "Outside weeks 1-17 (offseason)";
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

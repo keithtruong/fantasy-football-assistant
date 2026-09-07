@@ -41,6 +41,24 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "notes" not in draft_picks_columns:
         conn.execute("ALTER TABLE draft_picks ADD COLUMN notes TEXT")
 
+    teams_columns = {row["name"] for row in conn.execute("PRAGMA table_info(teams)")}
+    if "waiver_priority" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN waiver_priority INTEGER")
+    if "wins" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN wins INTEGER")
+    if "losses" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN losses INTEGER")
+    if "ties" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN ties INTEGER")
+
+    player_news_columns = {row["name"] for row in conn.execute("PRAGMA table_info(player_news)")}
+    if "analysis" not in player_news_columns:
+        conn.execute("ALTER TABLE player_news ADD COLUMN analysis TEXT")
+    if "category" not in player_news_columns:
+        conn.execute("ALTER TABLE player_news ADD COLUMN category TEXT")
+    if "source" not in player_news_columns:
+        conn.execute("ALTER TABLE player_news ADD COLUMN source TEXT")
+
     _migrate_leagues_platform_check(conn)
 
 

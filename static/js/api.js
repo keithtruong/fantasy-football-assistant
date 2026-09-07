@@ -144,4 +144,6 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ week1_start_date: week1StartDate }),
     }),
+  syncPlayerNews: () => request("/api/news/sync", { method: "POST" }),
+  getNewsSyncStatus: () => request("/api/news/sync_status"),
 };

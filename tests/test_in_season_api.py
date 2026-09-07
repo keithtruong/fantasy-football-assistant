@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from tests.test_api import ApiTestCase
 
 SEASON = 2026
@@ -59,6 +61,19 @@ class TestInSeasonWeeklyView(InSeasonTestCase):
         resp = self.client.get("/api/leagues/1/in_season?view=weekly&season=2026")
         self.assertEqual(resp.status_code, 400)
 
+    def test_waiver_priority_defaults_to_null(self):
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        self.assertIsNone(resp.get_json()["waiver_priority"])
+
+    def test_waiver_priority_reflects_my_team(self):
+        conn = self._connect_for_seeding()
+        conn.execute("UPDATE teams SET waiver_priority = 4 WHERE team_id = 1")
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        self.assertEqual(resp.get_json()["waiver_priority"], 4)
+
     def test_rostered_sorts_best_first_with_unranked_last(self):
         resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
         data = resp.get_json()
@@ -107,6 +122,64 @@ class TestInSeasonWeeklyView(InSeasonTestCase):
         self.assertIn("DST", data)
         self.assertIn("K", data)
 
+    def test_record_reflects_my_team(self):
+        conn = self._connect_for_seeding()
+        conn.execute("UPDATE teams SET wins = 3, losses = 2, ties = 1 WHERE team_id = 1")
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        self.assertEqual(resp.get_json()["record"], {"wins": 3, "losses": 2, "ties": 1})
+
+    def test_record_defaults_to_null(self):
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        self.assertEqual(resp.get_json()["record"], {"wins": None, "losses": None, "ties": None})
+
+    def test_opponent_null_when_no_matchup_synced(self):
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        self.assertIsNone(resp.get_json()["opponent"])
+
+    def test_opponent_reflects_this_weeks_matchup(self):
+        conn = self._connect_for_seeding()
+        conn.execute("UPDATE teams SET wins = 1, losses = 4, ties = 0 WHERE team_id = 2")
+        conn.execute(
+            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (1, ?, ?, 1, 2)",
+            (SEASON, WEEK),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        self.assertEqual(
+            resp.get_json()["opponent"],
+            {"team_name": "Team 2", "wins": 1, "losses": 4, "ties": 0},
+        )
+
+    def test_player_news_only_includes_my_rostered_players(self):
+        conn = self._connect_for_seeding()
+        # Saquon (rostered, mine) has a digest; Bijan (rostered, rival team) does not show up
+        # even though he also has a digest row, since he's not on my team.
+        conn.execute(
+            "INSERT INTO player_news (player_id, headline, link, published_at) "
+            "VALUES (2, 'Full practice Wednesday', 'https://example.com/1', '2026-09-10T00:00:00+00:00')"
+        )
+        conn.execute("INSERT INTO player_news_digest (player_id, digest) VALUES (2, 'Looked good in practice.')")
+        conn.execute(
+            "INSERT INTO player_news (player_id, headline, link, published_at) "
+            "VALUES (3, 'Some Bijan news', 'https://example.com/2', '2026-09-10T00:00:00+00:00')"
+        )
+        conn.execute("INSERT INTO player_news_digest (player_id, digest) VALUES (3, 'Some Bijan digest.')")
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(f"/api/leagues/1/in_season?view=weekly&season={SEASON}&week={WEEK}")
+        news = resp.get_json()["player_news"]
+        self.assertEqual(len(news), 1)
+        self.assertEqual(news[0]["full_name"], "Saquon Barkley")
+        self.assertEqual(news[0]["digest"], "Looked good in practice.")
+        self.assertEqual(len(news[0]["items"]), 1)
+        self.assertEqual(news[0]["items"][0]["headline"], "Full practice Wednesday")
+
     def test_requires_my_team_to_be_set(self):
         conn = self._connect_for_seeding()
         conn.execute("UPDATE teams SET is_mine = 0 WHERE league_id = 1")
@@ -147,6 +220,34 @@ class TestInSeasonRosView(InSeasonTestCase):
     def test_ros_does_not_require_week(self):
         resp = self.client.get(f"/api/leagues/1/in_season?view=ros&season={SEASON}")
         self.assertEqual(resp.status_code, 200)
+
+    def test_ros_includes_waiver_priority(self):
+        conn = self._connect_for_seeding()
+        conn.execute("UPDATE teams SET waiver_priority = 4 WHERE team_id = 1")
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(f"/api/leagues/1/in_season?view=ros&season={SEASON}")
+        self.assertEqual(resp.get_json()["waiver_priority"], 4)
+
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
+    def test_ros_opponent_uses_current_week_not_a_week_param(self, _mock_live):
+        import datetime
+
+        past_monday = datetime.date.today() - datetime.timedelta(days=30)
+        self.client.put("/api/season/2026", json={"week1_start_date": past_monday.isoformat()})
+        current_week = (datetime.date.today() - past_monday).days // 7 + 1
+
+        conn = self._connect_for_seeding()
+        conn.execute(
+            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (1, ?, ?, 1, 2)",
+            (SEASON, current_week),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = self.client.get(f"/api/leagues/1/in_season?view=ros&season={SEASON}")
+        self.assertEqual(resp.get_json()["opponent"]["team_name"], "Team 2")
 
     def test_ros_available_uses_ros_rankings(self):
         resp = self.client.get(f"/api/leagues/1/in_season?view=ros&season={SEASON}")

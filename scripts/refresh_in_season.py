@@ -1,5 +1,6 @@
-"""The full in-season refresh: rosters + player status for every active
-platform league, plus weekly and rest-of-season rankings. Meant to be run
+"""The full in-season refresh: rosters + player status + record/matchup for
+every active platform league, plus weekly rankings, rest-of-season rankings,
+and player news. Meant to be run
 both on a schedule (see the Task Scheduler entry set up alongside this
 script) and by hand for an immediate on-demand refresh.
 
@@ -11,11 +12,14 @@ non-zero exit code.
 Usage:
     python -m scripts.refresh_in_season [--season 2026] [--week 3]
 
---season/--week default to the current year and ffassistant.season.current_week()
-respectively. If neither week1_start_date is configured (see League Settings'
-Season panel) nor --week is passed, the roster/status sync still runs (just
-without player_status), and rankings syncs are skipped with a warning, since
-weekly rankings specifically require a week.
+--season/--week default to the current year and ffassistant.season.smart_current_week()
+respectively — which prefers a live NFL-week lookup over the manual
+week1_start_date setting (see League Settings' Season panel), so no setup is
+normally needed. If week resolution still comes back empty (live lookup
+unreachable and week1_start_date unset) and --week isn't passed, the
+roster/status sync still runs (just without player_status), and rankings
+syncs are skipped with a warning, since weekly rankings specifically require
+a week.
 """
 
 import argparse
@@ -25,9 +29,10 @@ import sys
 from ffassistant.config import REPO_ROOT
 from ffassistant.db import get_connection
 from ffassistant.ingest import sync_league_from_platform
+from ffassistant.ingest.news import sync_player_news
 from ffassistant.ingest.rankings import sync_ros_rankings, sync_weekly_rankings
 from ffassistant.name_matching import list_unresolved
-from ffassistant.season import current_week
+from ffassistant.season import smart_current_week
 
 LOG_PATH = REPO_ROOT / "data" / "refresh_log.txt"
 
@@ -82,6 +87,15 @@ def refresh_ros(conn, season):
     return per_format, errors
 
 
+def refresh_news(conn):
+    try:
+        sync_player_news(conn)
+        count = conn.execute("SELECT COUNT(*) AS c FROM player_news").fetchone()["c"]
+        return True, f"{count} headlines matched", None
+    except Exception as e:
+        return False, None, str(e)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--season", type=int, default=datetime.date.today().year)
@@ -90,7 +104,7 @@ def main(argv=None):
 
     conn = get_connection()
     season = args.season
-    week = args.week if args.week is not None else current_week(conn, season)
+    week = args.week if args.week is not None else smart_current_week(conn, season)
 
     lines = [f"=== {datetime.datetime.now().isoformat(timespec='seconds')} — season={season} week={week} ==="]
     had_failure = False
@@ -104,7 +118,10 @@ def main(argv=None):
             lines.append(f"  FAILED — {name}: {error}")
 
     if week is None:
-        lines.append("Weekly rankings: SKIPPED (no current week — set week1_start_date in League Settings, or pass --week)")
+        lines.append(
+            "Weekly rankings: SKIPPED (no current week — live NFL-week lookup unreachable and no "
+            "week1_start_date fallback set in League Settings; or pass --week)"
+        )
     else:
         ok, detail, error = refresh_weekly(conn, season, week)
         if ok:
@@ -120,6 +137,13 @@ def main(argv=None):
     for error in ros_errors:
         had_failure = True
         lines.append(f"  ROS FAILED — {error}")
+
+    ok, detail, error = refresh_news(conn)
+    if ok:
+        lines.append(f"Player news: {detail}")
+    else:
+        had_failure = True
+        lines.append(f"Player news: FAILED — {error}")
 
     unresolved_count = len(list_unresolved(conn, "rankings_provider"))
     if unresolved_count:
