@@ -34,9 +34,11 @@ venv/
 data/*.db
 data/*.db-journal
 data/*.db-wal
+data/*.db.bak-*
 
 # Cached platform data (large, regenerable from the live API)
 data/*.json
 
 # Logs
 *.log
+data/refresh_log.txt
