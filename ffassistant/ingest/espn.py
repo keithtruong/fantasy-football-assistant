@@ -6,8 +6,9 @@ Expects `conn` to have `row_factory = sqlite3.Row` (see ffassistant.db.get_conne
 import sqlite3
 
 from ffassistant.connectors import espn as espn_api
-from ffassistant.ingest._teams import remove_stale_teams
+from ffassistant.ingest._teams import refresh_nfl_team, remove_stale_teams
 from ffassistant.name_matching import match_player, resolve_override
+from ffassistant.nfl_teams import canonical_team_code
 
 # ESPN's injuryStatus strings, mapped down to this project's player_status enum.
 _INJURY_STATUS_MAP = {
@@ -125,8 +126,10 @@ def _sync_matchups(conn, league_id, espn_league_id, season, week, team_id_by_pla
 
 
 def _resolve_or_create_player(conn: sqlite3.Connection, player_info: dict) -> int:
+    nfl_team = canonical_team_code(player_info.get("nfl_team"))
     player_id = match_player(conn, "espn", player_info["full_name"], player_info["position"])
     if player_id is not None:
+        refresh_nfl_team(conn, player_id, nfl_team)
         return player_id
 
     # ESPN's roster data is structured (not a scraped name string), so on a genuine
@@ -134,7 +137,7 @@ def _resolve_or_create_player(conn: sqlite3.Connection, player_info: dict) -> in
     # rather than leaving it stuck in the unresolved-names queue.
     cur = conn.execute(
         "INSERT INTO players (full_name, position, nfl_team) VALUES (?, ?, ?)",
-        (player_info["full_name"], player_info["position"], player_info["nfl_team"]),
+        (player_info["full_name"], player_info["position"], nfl_team),
     )
     player_id = cur.lastrowid
     resolve_override(conn, "espn", player_info["full_name"], player_id)

@@ -235,6 +235,41 @@ class TestSyncLeague(unittest.TestCase):
         self.assertEqual(statuses["Kenneth Walker"], "questionable")
         self.assertEqual(statuses["Brand New Rookie"], "out")
 
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_team_codes_are_canonicalized_on_create_and_refreshed_on_resync(self, *_mocks):
+        drifted = {
+            "p1": {**FAKE_ROSTER_PLAYERS["p1"], "nfl_team": "Min"},   # Yahoo-style title case
+            "p2": {**FAKE_ROSTER_PLAYERS["p2"]},
+            "p3": {**FAKE_ROSTER_PLAYERS["p3"], "nfl_team": "WAS"},   # Sleeper/provider Washington
+        }
+        with patch(
+            "ffassistant.ingest.sleeper.sleeper_api.get_roster_players",
+            side_effect=lambda ids, lookup: [drifted[i] for i in ids],
+        ):
+            sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        teams = {
+            r["full_name"]: r["nfl_team"]
+            for r in self.conn.execute("SELECT full_name, nfl_team FROM players")
+        }
+        self.assertEqual(teams["Justin Jefferson"], "MIN")   # pre-seeded row (id 10), team filled + normalized
+        self.assertEqual(teams["Brand New Rookie"], "WSH")   # auto-created, "WAS" -> "WSH"
+
+        # A resync that reflects a trade updates the matched player's team.
+        traded = {**drifted, "p3": {**drifted["p3"], "nfl_team": "kc"}}
+        with patch(
+            "ffassistant.ingest.sleeper.sleeper_api.get_roster_players",
+            side_effect=lambda ids, lookup: [traded[i] for i in ids],
+        ):
+            sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        rookie_team = self.conn.execute(
+            "SELECT nfl_team FROM players WHERE full_name = 'Brand New Rookie'"
+        ).fetchone()["nfl_team"]
+        self.assertEqual(rookie_team, "KC")
+
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_roster_players", side_effect=fake_get_roster_players)
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_players_lookup", return_value={})
     @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)

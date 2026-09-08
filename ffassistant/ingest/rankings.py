@@ -16,6 +16,7 @@ import sqlite3
 
 from ffassistant.connectors import rankings as rankings_api
 from ffassistant.name_matching import match_player, normalize, resolve_override
+from ffassistant.nfl_teams import canonical_team_code
 
 
 def sync_draft_rankings(
@@ -61,7 +62,7 @@ def _has_any_candidate(conn: sqlite3.Connection, full_name: str, position) -> bo
 def _create_player_from_ranking(conn: sqlite3.Connection, row) -> int:
     cur = conn.execute(
         "INSERT INTO players (full_name, position, nfl_team) VALUES (?, ?, ?)",
-        (row["full_name"], row["position"], row["nfl_team"]),
+        (row["full_name"], row["position"], canonical_team_code(row["nfl_team"])),
     )
     player_id = cur.lastrowid
     resolve_override(conn, "rankings_provider", row["full_name"], player_id)

@@ -2,7 +2,7 @@ import sqlite3
 import unittest
 from pathlib import Path
 
-from ffassistant.ingest._teams import remove_stale_teams
+from ffassistant.ingest._teams import refresh_nfl_team, remove_stale_teams
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "ffassistant" / "schema.sql"
 
@@ -50,6 +50,35 @@ class TestRemoveStaleTeams(unittest.TestCase):
         remove_stale_teams(self.conn, league_id=1, current_platform_team_ids=[])
         remaining = self.conn.execute("SELECT * FROM teams WHERE league_id = 1").fetchall()
         self.assertEqual(remaining, [])
+
+
+class TestRefreshNflTeam(unittest.TestCase):
+    def setUp(self):
+        self.conn = make_conn()
+        self.conn.execute(
+            "INSERT INTO players (player_id, full_name, position, nfl_team) VALUES (1, 'A', 'RB', 'DEN')"
+        )
+        self.conn.execute(
+            "INSERT INTO players (player_id, full_name, position, nfl_team) VALUES (2, 'B', 'WR', NULL)"
+        )
+        self.conn.commit()
+
+    def _team(self, player_id):
+        return self.conn.execute(
+            "SELECT nfl_team FROM players WHERE player_id = ?", (player_id,)
+        ).fetchone()["nfl_team"]
+
+    def test_updates_when_team_changed(self):
+        refresh_nfl_team(self.conn, 1, "DAL")
+        self.assertEqual(self._team(1), "DAL")
+
+    def test_fills_a_null_team(self):
+        refresh_nfl_team(self.conn, 2, "KC")
+        self.assertEqual(self._team(2), "KC")
+
+    def test_none_does_not_blank_a_known_team(self):
+        refresh_nfl_team(self.conn, 1, None)
+        self.assertEqual(self._team(1), "DEN")
 
 
 if __name__ == "__main__":

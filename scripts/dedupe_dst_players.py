@@ -14,9 +14,9 @@ merges every other row for that team into it: aliases, draft picks, roster
 spots, player status, and manual sleeper/shy-away tags are repointed to the
 winner; the losers' own (stale) rankings rows are left behind to be deleted
 along with the loser row itself via ON DELETE CASCADE. Also normalizes the
-two known team-code drifts on the winner row (Rams' rankings-provider code
-"LA" and Washington's "WAS") to the codes nfl_team_byes/nfl_team_playoff_sos
-actually use ("LAR", "WSH"), so bye/SOS joins work for those two defenses.
+winner row's team code (via ffassistant.nfl_teams.canonical_team_code) so
+bye/SOS joins work for defenses whose code drifted ("LA" -> "LAR",
+"WAS" -> "WSH").
 
 Idempotent: a second run finds one row per team (no duplicates) and does
 nothing.
@@ -28,15 +28,7 @@ Usage:
 import sqlite3
 
 from ffassistant.db import get_connection
-
-# Rankings-provider team-code drift vs. the codes nfl_team_byes/
-# nfl_team_playoff_sos use. Applied to the winner row only.
-_TEAM_CODE_FIXES = {"LA": "LAR", "WAS": "WSH"}
-
-
-def _canonical_team_code(raw_team: str) -> str:
-    code = raw_team.strip().upper()
-    return _TEAM_CODE_FIXES.get(code, code)
+from ffassistant.nfl_teams import canonical_team_code
 
 
 def _pick_winner(conn: sqlite3.Connection, player_ids: list[int]) -> int:
@@ -126,7 +118,7 @@ def dedupe_dst_players(conn: sqlite3.Connection | None = None) -> dict:
     for row in dst_players:
         if not row["nfl_team"]:
             continue
-        groups.setdefault(_canonical_team_code(row["nfl_team"]), []).append(row["player_id"])
+        groups.setdefault(canonical_team_code(row["nfl_team"]), []).append(row["player_id"])
 
     teams_with_duplicates = 0
     duplicates_deleted = 0

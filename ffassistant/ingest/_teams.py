@@ -1,9 +1,28 @@
-"""Shared helper for the platform ingest modules: cleaning up teams that no
+"""Shared helpers for the platform ingest modules: cleaning up teams that no
 longer appear in a fresh sync (e.g. an owner left and the platform reassigned
-that slot's team_id) so they don't accumulate as ghost teams across seasons.
+that slot's team_id) so they don't accumulate as ghost teams across seasons,
+and keeping a matched player's NFL team current across resyncs.
 """
 
 import sqlite3
+
+
+def refresh_nfl_team(conn: sqlite3.Connection, player_id: int, nfl_team: str | None) -> None:
+    """Update players.nfl_team from a platform resync when it has actually changed.
+
+    nfl_team is set at player creation but otherwise never revisited, so a
+    traded/signed player kept his old team until now (and, historically, the
+    first source to create the row also locked in its team-code spelling —
+    see ffassistant.nfl_teams). Pass the already-canonicalized code; a None
+    (free agent / missing) is ignored rather than blanking a known team, since
+    platform roster data drops players the moment they're cut anyway.
+    """
+    if nfl_team is None:
+        return
+    conn.execute(
+        "UPDATE players SET nfl_team = ? WHERE player_id = ? AND (nfl_team IS NULL OR nfl_team != ?)",
+        (nfl_team, player_id, nfl_team),
+    )
 
 
 def remove_stale_teams(conn: sqlite3.Connection, league_id: int, current_platform_team_ids: list[str]) -> None:

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ffassistant.config import REPO_ROOT
 from ffassistant.db import get_connection
+from ffassistant.nfl_teams import canonical_team_code
 
 DEFAULT_CSV_PATH = REPO_ROOT / "data" / "bye_weeks_2026.csv"
 
@@ -27,7 +28,7 @@ def import_byes(csv_path: Path, season: int, conn: sqlite3.Connection | None = N
         for row in csv.DictReader(f):
             conn.execute(
                 "INSERT INTO nfl_team_byes (season, team, bye_week) VALUES (?, ?, ?)",
-                (season, row["team"], int(row["bye_week"])),
+                (season, canonical_team_code(row["team"]), int(row["bye_week"])),
             )
             row_count += 1
 

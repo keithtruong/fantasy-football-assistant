@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ffassistant.config import REPO_ROOT
 from ffassistant.db import get_connection
+from ffassistant.nfl_teams import canonical_team_code
 
 DEFAULT_CSV_PATH = REPO_ROOT / "data" / "implied_totals_2026.csv"
 
@@ -34,7 +35,7 @@ def import_implied_totals(csv_path: Path, season: int, conn: sqlite3.Connection 
                 """,
                 (
                     season,
-                    row["team"],
+                    canonical_team_code(row["team"]),
                     float(row["implied_tt_full"]),
                     float(row["implied_tt_reg"]),
                     float(row["implied_tt_playoffs"]),

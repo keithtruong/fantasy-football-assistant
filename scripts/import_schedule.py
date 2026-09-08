@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ffassistant.config import REPO_ROOT
 from ffassistant.db import get_connection
+from ffassistant.nfl_teams import canonical_team_code
 
 DEFAULT_CSV_PATH = REPO_ROOT / "data" / "nfl_schedule_2026.csv"
 
@@ -28,7 +29,13 @@ def import_schedule(csv_path: Path, season: int, conn: sqlite3.Connection | None
         for row in csv.DictReader(f):
             conn.execute(
                 "INSERT INTO nfl_team_schedule (season, team, week, opponent, is_home) VALUES (?, ?, ?, ?, ?)",
-                (season, row["team"], int(row["week"]), row["opponent"], int(row["is_home"])),
+                (
+                    season,
+                    canonical_team_code(row["team"]),
+                    int(row["week"]),
+                    canonical_team_code(row["opponent"]),
+                    int(row["is_home"]),
+                ),
             )
             row_count += 1
 

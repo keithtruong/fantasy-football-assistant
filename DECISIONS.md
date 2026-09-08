@@ -6,6 +6,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-09-07 — Canonical NFL team codes
+
+**Context:** The Exposure page showed a rostered Commanders player (Jacory Croskey-Merritt) under a "WAS" team bucket *and* listed "WSH" as a team with zero exposure — two entries for one real NFL team. Root cause: no team-abbreviation normalization anywhere. Each source stores its own spelling — ESPN `WSH`, Yahoo title-case (`Was`, `Bal`, `Sea`), Sleeper and the rankings provider `WAS` (and `LA` for the Rams) — while the per-team reference tables (`nfl_team_byes`, `nfl_team_playoff_sos`, `nfl_team_schedule`, `nfl_team_implied_totals`) each key off a single spelling. `players.nfl_team` had accumulated `WAS`×9, `WSH`×2, `Was`×1, `LA`×2, title-case drift on eight more teams, and two literal `'None'` strings. Bye/SOS/implied-total joins were silently failing for every drifted row, not just on Exposure.
+
+**New `ffassistant/nfl_teams.py` with `canonical_team_code()`** — the single normalizer: upper-case, strip, map known alternates onto the reference-table spelling (`WAS→WSH`, `LA/STL→LAR`, `SD→LAC`, `OAK→LV`, `JAC→JAX`, `ARZ→ARI`), and return `None` for non-team values (`""`, `FA`, `None`). Unknown codes pass through upper-cased rather than being dropped, so a future relocation/expansion team still lands somewhere until the map catches up. This generalizes the `LA`/`WAS`-only fix that already lived, DST-only, in `scripts/dedupe_dst_players.py` (now refactored to import it).
+
+**Canonical spelling is whatever the reference-data CSVs already use** (`WSH`, `LAR`, `LV`, `JAX`) rather than the more common fantasy convention (`WAS`), because those tables and the DST dedupe script had already committed to it — changing the smaller, static side would have been churn for churn's sake. The one drifted CSV cell (`implied_totals_2026.csv` had `WAS`) was corrected, and all four `scripts/import_*.py` reference-data importers now run team codes (including opponent columns) through `canonical_team_code()` as cheap insurance against future CSV drift.
+
+**Normalization applied at the ingest layer, not the connectors.** All four `players.nfl_team` write sites — `ingest/espn.py`, `ingest/yahoo.py`, `ingest/sleeper.py`, `ingest/rankings.py` — now canonicalize on write. The ingest layer was chosen over the connectors because it's the single DB-write boundary and it's where the resync-update below lives; connectors keep returning raw-ish platform values.
+
+**`nfl_team` is now also refreshed on resync, not just at player creation** (`refresh_nfl_team()` in `ingest/_teams.py`) — for the three platform ingests only, since structured platform roster data is authoritative for who's on a team (the same reasoning behind their auto-create-on-miss behavior). Rankings ingest still only sets `nfl_team` when it *creates* a player, consistent with treating scraped rankings names as lower-trust. A `None` (free agent / missing) never blanks a known team. Previously a traded/signed player kept his old team indefinitely.
+
+**One-time backfill:** `scripts/normalize_player_teams.py` (idempotent, same pattern as `tag_rookies.py` / `dedupe_dst_players.py`) rewrites existing `players.nfl_team` through the normalizer. Run against the live DB: 20 players re-coded, 4 `'None'`/junk values cleared; a follow-up `dedupe_dst_players` run merged 10 DST rows that had drifted in since it was last run.
+
+---
+
 ## 2026-08-13 — Good/Bad Offense tag from average implied team totals
 
 **Context:** Keith wanted a way to tag offenses as good or bad for the draft, based on average implied team total (a proxy for how many points a team's offense is expected to score, derived from game-line odds) across the season.

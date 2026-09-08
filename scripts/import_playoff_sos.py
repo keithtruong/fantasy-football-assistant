@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ffassistant.config import REPO_ROOT
 from ffassistant.db import get_connection
+from ffassistant.nfl_teams import canonical_team_code
 
 DEFAULT_CSV_PATH = REPO_ROOT / "data" / "playoff_sos_2026.csv"
 
@@ -36,13 +37,13 @@ def import_playoff_sos(csv_path: Path, season: int, conn: sqlite3.Connection | N
                 """,
                 (
                     season,
-                    row["team"],
+                    canonical_team_code(row["team"]),
                     float(row["own_implied_wins"]),
-                    row["wk15_opp"],
+                    canonical_team_code(row["wk15_opp"]),
                     float(row["wk15_opp_wins"]),
-                    row["wk16_opp"],
+                    canonical_team_code(row["wk16_opp"]),
                     float(row["wk16_opp_wins"]),
-                    row["wk17_opp"],
+                    canonical_team_code(row["wk17_opp"]),
                     float(row["wk17_opp_wins"]),
                     float(row["playoff_sos_avg_opp_wins"]),
                     int(row["sos_rank_hardest_to_easiest"]),
