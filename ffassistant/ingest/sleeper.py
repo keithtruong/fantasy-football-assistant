@@ -6,9 +6,7 @@ Expects `conn` to have `row_factory = sqlite3.Row` (see ffassistant.db.get_conne
 import sqlite3
 
 from ffassistant.connectors import sleeper as sleeper_api
-from ffassistant.ingest._teams import refresh_nfl_team, remove_stale_teams
-from ffassistant.name_matching import match_player, resolve_override
-from ffassistant.nfl_teams import canonical_team_code
+from ffassistant.ingest._teams import remove_stale_teams, resolve_or_create_player, upsert_weekly_matchup
 
 # Sleeper's own injuryStatus strings, mapped down to this project's player_status enum.
 _INJURY_STATUS_MAP = {
@@ -97,7 +95,7 @@ def _sync_teams_and_rosters(
         # since we don't have transaction history to attribute adds/drops from yet.
         conn.execute("DELETE FROM roster_spots WHERE team_id = ?", (team_id,))
         for player_info in sleeper_api.get_roster_players(team["player_ids"], players_lookup):
-            player_id = _resolve_or_create_player(conn, player_info)
+            player_id = resolve_or_create_player(conn, "sleeper", player_info)
             conn.execute(
                 "INSERT INTO roster_spots (team_id, player_id, acquired_via) VALUES (?, ?, NULL) "
                 "ON CONFLICT (team_id, player_id) DO NOTHING",
@@ -125,26 +123,4 @@ def _sync_matchups(conn, league_id, sleeper_league_id, season, week, team_id_by_
         opponent_team_id = team_id_by_platform_id.get(pair["opponent_platform_team_id"])
         if team_id is None or opponent_team_id is None:
             continue
-        conn.execute(
-            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (?, ?, ?, ?, ?)",
-            (league_id, season, week, team_id, opponent_team_id),
-        )
-
-
-def _resolve_or_create_player(conn: sqlite3.Connection, player_info: dict) -> int:
-    nfl_team = canonical_team_code(player_info.get("nfl_team"))
-    player_id = match_player(conn, "sleeper", player_info["full_name"], player_info["position"])
-    if player_id is not None:
-        refresh_nfl_team(conn, player_id, nfl_team)
-        return player_id
-
-    # Sleeper's player data is structured (not a scraped name string), so on a genuine
-    # miss it's safe to treat it as authoritative and seed a new canonical player
-    # rather than leaving it stuck in the unresolved-names queue.
-    cur = conn.execute(
-        "INSERT INTO players (full_name, position, nfl_team) VALUES (?, ?, ?)",
-        (player_info["full_name"], player_info["position"], nfl_team),
-    )
-    player_id = cur.lastrowid
-    resolve_override(conn, "sleeper", player_info["full_name"], player_id)
-    return player_id
+        upsert_weekly_matchup(conn, league_id, season, week, team_id, opponent_team_id)
