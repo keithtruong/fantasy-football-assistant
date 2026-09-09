@@ -48,6 +48,12 @@ const wlYearInput = document.getElementById("wl-year-input");
 const refreshRankingsButton = document.getElementById("refresh-rankings-button");
 const rankingsSyncStatus = document.getElementById("rankings-sync-status");
 const scoringSelect = document.getElementById("scoring-format-select");
+const refreshAllButton = document.getElementById("refresh-all-button");
+const refreshAllStatus = document.getElementById("refresh-all-status");
+const refreshAllRostersButton = document.getElementById("refresh-all-rosters-button");
+const refreshAllRostersStatus = document.getElementById("refresh-all-rosters-status");
+const refreshLeagueButton = document.getElementById("refresh-league-button");
+const refreshLeagueStatus = document.getElementById("refresh-league-status");
 const refreshWeeklyRankingsButton = document.getElementById("refresh-weekly-rankings-button");
 const weeklyRankingsSyncStatus = document.getElementById("weekly-rankings-sync-status");
 const refreshRosRankingsButton = document.getElementById("refresh-ros-rankings-button");
@@ -190,6 +196,33 @@ function formatSyncedAt(sqliteDatetime) {
   return `Last synced ${date.toLocaleString()}`;
 }
 
+function sumCounts(counts) {
+  return Object.values(counts).reduce((total, count) => total + count, 0);
+}
+
+// "Refresh All Leagues" spans rosters + weekly/ROS rankings + news in one call
+// (see ffassistant.refresh.run_full_refresh) — this condenses that summary
+// into one status line rather than four separate ones like the granular buttons.
+function summarizeRefreshAll(result) {
+  const parts = [];
+
+  let rosterPart = `Rosters ${result.rosters.synced}/${result.rosters.total}`;
+  if (result.rosters.failures.length) {
+    rosterPart += ` (${result.rosters.failures.map((f) => f.league).join(", ")} failed)`;
+  }
+  parts.push(rosterPart);
+
+  parts.push(result.weekly.skipped ? "Weekly skipped (no current week)" : `Weekly ${sumCounts(result.weekly.counts)}`);
+  parts.push(`ROS ${sumCounts(result.ros.counts)}`);
+  parts.push(result.news.ok ? result.news.detail : "News failed");
+
+  if (result.unresolved_count) {
+    parts.push(`${result.unresolved_count} unresolved`);
+  }
+
+  return parts.join(" · ");
+}
+
 async function refreshSyncStatus() {
   try {
     const status = await api.getRankingsSyncStatus(state.season, state.scoringFormat);
@@ -315,6 +348,74 @@ function init() {
     }
   });
   refreshSyncStatus();
+
+  refreshAllButton.addEventListener("click", async () => {
+    refreshAllButton.disabled = true;
+    refreshAllStatus.textContent = "Refreshing all leagues…";
+    refreshAllStatus.className = "rankings-sync-status";
+    try {
+      const result = await api.refreshAll(state.season, state.week);
+      refreshAllStatus.textContent = `${new Date().toLocaleTimeString()} — ${summarizeRefreshAll(result)}`;
+      refreshAllStatus.className = result.had_failure
+        ? "rankings-sync-status rankings-sync-warning"
+        : "rankings-sync-status";
+      await renderActive();
+      refreshWeeklySyncStatus();
+      refreshRosSyncStatus();
+      refreshNewsSyncStatus();
+    } catch (err) {
+      refreshAllStatus.textContent = err.message;
+      refreshAllStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshAllButton.disabled = false;
+    }
+  });
+
+  refreshAllRostersButton.addEventListener("click", async () => {
+    refreshAllRostersButton.disabled = true;
+    refreshAllRostersStatus.textContent = "Refreshing all rosters…";
+    refreshAllRostersStatus.className = "rankings-sync-status";
+    try {
+      const result = await api.refreshRosters(state.season, state.week);
+      let text = `${new Date().toLocaleTimeString()} — Rosters ${result.rosters.synced}/${result.rosters.total}`;
+      if (result.rosters.failures.length) {
+        text += ` (${result.rosters.failures.map((f) => f.league).join(", ")} failed)`;
+      }
+      refreshAllRostersStatus.textContent = text;
+      refreshAllRostersStatus.className = result.had_failure
+        ? "rankings-sync-status rankings-sync-warning"
+        : "rankings-sync-status";
+      await renderActive();
+    } catch (err) {
+      refreshAllRostersStatus.textContent = err.message;
+      refreshAllRostersStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshAllRostersButton.disabled = false;
+    }
+  });
+
+  refreshLeagueButton.addEventListener("click", async () => {
+    if (!state.leagueId) {
+      refreshLeagueStatus.textContent = "Select a league first";
+      refreshLeagueStatus.className = "rankings-sync-status rankings-sync-error";
+      return;
+    }
+    const leagueName = leaguesById[state.leagueId]?.name || "this league";
+    refreshLeagueButton.disabled = true;
+    refreshLeagueStatus.textContent = `Refreshing ${leagueName}…`;
+    refreshLeagueStatus.className = "rankings-sync-status";
+    try {
+      await api.resyncLeague(state.leagueId, state.season);
+      refreshLeagueStatus.textContent = `${new Date().toLocaleTimeString()} — ${leagueName} synced`;
+      refreshLeagueStatus.className = "rankings-sync-status";
+      await renderActive();
+    } catch (err) {
+      refreshLeagueStatus.textContent = err.message;
+      refreshLeagueStatus.className = "rankings-sync-status rankings-sync-error";
+    } finally {
+      refreshLeagueButton.disabled = false;
+    }
+  });
 
   refreshWeeklyRankingsButton.addEventListener("click", async () => {
     if (!state.week) {

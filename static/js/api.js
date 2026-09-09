@@ -149,4 +149,16 @@ export const api = {
     }),
   syncPlayerNews: () => request("/api/news/sync", { method: "POST" }),
   getNewsSyncStatus: () => request("/api/news/sync_status"),
+  refreshAll: (season, week) =>
+    request("/api/refresh_all", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ season, week }),
+    }),
+  refreshRosters: (season, week) =>
+    request("/api/refresh_rosters", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ season, week }),
+    }),
 };
