@@ -19,7 +19,27 @@ _MANUAL_PLATFORM = "manual"
 _REC_STAT_KEYS = ("REC", "rec", "reception", "receptions")
 
 
-def _derive_scoring_format(db, league_id) -> str:
+def derive_reception_scoring(db, league_id) -> str:
+    """full_ppr/half_ppr/non_ppr from this league's own reception-scoring value —
+    deliberately ignoring superflex. Used wherever a source has no separate
+    superflex list to begin with (e.g. weekly by-position rankings, which only
+    ever come in STD/HALF/PPR — there's no such thing as a "superflex" QB1 vs
+    QB2 weekly list), unlike the draft tool's overall Top-300 board, which does.
+    """
+    placeholders = ", ".join("?" for _ in _REC_STAT_KEYS)
+    row = db.execute(
+        f"SELECT points FROM league_scoring WHERE league_id = ? AND stat_key IN ({placeholders})",
+        (league_id, *_REC_STAT_KEYS),
+    ).fetchone()
+    points = row["points"] if row else 0
+    if points >= 1:
+        return "full_ppr"
+    if points >= 0.5:
+        return "half_ppr"
+    return "non_ppr"
+
+
+def derive_scoring_format(db, league_id) -> str:
     """Best-effort match to one of the draft rankings' scoring_format buckets
     (full_ppr/half_ppr/non_ppr/superflex) from this league's own settings, so the
     draft tool can default to the right rankings instead of always full_ppr.
@@ -34,18 +54,7 @@ def _derive_scoring_format(db, league_id) -> str:
     ).fetchone()
     if superflex:
         return "superflex"
-
-    placeholders = ", ".join("?" for _ in _REC_STAT_KEYS)
-    row = db.execute(
-        f"SELECT points FROM league_scoring WHERE league_id = ? AND stat_key IN ({placeholders})",
-        (league_id, *_REC_STAT_KEYS),
-    ).fetchone()
-    points = row["points"] if row else 0
-    if points >= 1:
-        return "full_ppr"
-    if points >= 0.5:
-        return "half_ppr"
-    return "non_ppr"
+    return derive_reception_scoring(db, league_id)
 
 
 @leagues_bp.get("")
@@ -65,7 +74,7 @@ def list_leagues():
     ).fetchall()
     leagues = [dict(r) for r in rows]
     for league in leagues:
-        league["scoring_format"] = _derive_scoring_format(db, league["league_id"])
+        league["scoring_format"] = derive_scoring_format(db, league["league_id"])
     return jsonify(leagues)
 
 

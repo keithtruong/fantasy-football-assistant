@@ -145,10 +145,32 @@ FAKE_WEEKLY_ROWS_BY_POSITION = {
     "TE": [],
     "DST": [],
     "K": [],
+    "FLX": [
+        {
+            "full_name": "Josh Allen",  # not actually flex-eligible in real life, but the
+            "position": "QB",           # fake stub just needs to prove list_type tagging works
+            "nfl_team": "BUF",
+            "rank": 1,
+            "position_rank": "1",
+            "bye_week": 7,
+            "opponent": "MIA",
+        }
+    ],
+    "OP": [
+        {
+            "full_name": "Josh Allen",
+            "position": "QB",
+            "nfl_team": "BUF",
+            "rank": 2,
+            "position_rank": "2",
+            "bye_week": 7,
+            "opponent": "MIA",
+        }
+    ],
 }
 
 
-def fake_get_weekly_rankings(season, week, position):
+def fake_get_weekly_rankings(season, week, position, scoring_format):
     return FAKE_WEEKLY_ROWS_BY_POSITION.get(position, [])
 
 
@@ -165,13 +187,13 @@ class TestSyncWeeklyRankings(unittest.TestCase):
         side_effect=fake_get_weekly_rankings,
     )
     def test_matches_known_players_and_queues_unknown_across_positions(self, _mock):
-        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1)
+        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1, scoring_format="half_ppr")
 
         rows = self.conn.execute(
             "SELECT p.full_name, r.rank, r.week, r.scoring_format FROM rankings r "
-            "JOIN players p ON p.player_id = r.player_id WHERE r.ranking_type = 'weekly'"
+            "JOIN players p ON p.player_id = r.player_id WHERE r.ranking_type = 'weekly' AND r.list_type IS NULL"
         ).fetchall()
-        self.assertEqual(len(rows), 1)  # only Josh Allen matched
+        self.assertEqual(len(rows), 1)  # only Josh Allen matched (standard position row, not counting FLX/OP)
         self.assertEqual(rows[0]["full_name"], "Josh Allen")
         self.assertEqual(rows[0]["week"], 1)
         self.assertEqual(rows[0]["scoring_format"], "half_ppr")
@@ -189,11 +211,11 @@ class TestSyncWeeklyRankings(unittest.TestCase):
         side_effect=fake_get_weekly_rankings,
     )
     def test_resync_replaces_rather_than_duplicates(self, _mock):
-        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1)
-        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1)
+        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1, scoring_format="half_ppr")
+        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1, scoring_format="half_ppr")
 
         count = self.conn.execute(
-            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly'"
+            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND list_type IS NULL"
         ).fetchone()["c"]
         self.assertEqual(count, 1)  # not 2
 
@@ -201,12 +223,28 @@ class TestSyncWeeklyRankings(unittest.TestCase):
         "ffassistant.ingest.rankings.rankings_api.get_weekly_rankings",
         side_effect=fake_get_weekly_rankings,
     )
+    def test_flex_and_superflex_lists_are_tagged_and_coexist_with_position_rows(self, _mock):
+        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1, scoring_format="half_ppr")
+
+        rows = self.conn.execute(
+            "SELECT rank, list_type FROM rankings WHERE ranking_type = 'weekly' AND player_id = 1"
+        ).fetchall()
+        # Josh Allen has three rows this week: the standard QB-position row (list_type
+        # NULL) plus the two combined-list rows (list_type 'flex'/'superflex') — they
+        # coexist rather than colliding, since list_type disambiguates them.
+        by_list_type = {r["list_type"]: r["rank"] for r in rows}
+        self.assertEqual(by_list_type, {None: 1, "flex": 1, "superflex": 2})
+
+    @patch(
+        "ffassistant.ingest.rankings.rankings_api.get_weekly_rankings",
+        side_effect=fake_get_weekly_rankings,
+    )
     def test_different_weeks_coexist(self, _mock):
-        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1)
-        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=2)
+        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=1, scoring_format="half_ppr")
+        rankings_ingest.sync_weekly_rankings(self.conn, season=2026, week=2, scoring_format="half_ppr")
 
         count = self.conn.execute(
-            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly'"
+            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND list_type IS NULL"
         ).fetchone()["c"]
         self.assertEqual(count, 2)  # week 1 and week 2 both kept
 

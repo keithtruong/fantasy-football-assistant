@@ -47,7 +47,7 @@ Five peer sections, not nested inside each other: **Draft | In-season | Exposure
 
 Built around Keith's actual weekly routine: Tuesday night waiver prep (before the rankings provider's weekly refresh, so more subjective), Wednesday night once both rest-of-season and weekly rankings are out (waiver targets + set lineups), then Thursday/Sunday-morning/Monday re-checks before each slate locks.
 
-**Two views**, same league-selector convention as Draft, mirroring the legacy "Weekly Rank Eval" tab: **Weekly** (Rostered | Available) and **Rest-of-season** (Rostered | Available), grouped by position. Weekly needs QB/RB/WR/TE/DST/K — Keith streams DST and K frequently based on matchups. ROS stays QB/RB/WR/TE only; DST/K aren't rest-of-season assets.
+**Three views**, same league-selector convention as Draft, mirroring the legacy "Weekly Rank Eval" tab: **Weekly** (Rostered | Available), **Starters** (this week's optimal lineup), and **Rest-of-season** (Rostered | Available), grouped by position. Weekly needs QB/RB/WR/TE/DST/K — Keith streams DST and K frequently based on matchups. ROS stays QB/RB/WR/TE only; DST/K aren't rest-of-season assets.
 
 **No separate lineup-setting or diff screen.** Thursday/Sunday/Monday re-checks reuse the same Weekly view, just reopened with refreshed data — the Weekly view already is the lineup tool, since Keith sets the actual lineup in the platform itself.
 
@@ -65,6 +65,8 @@ Both views also open with a "This Week" info card — Keith's record, this week'
 - Swap-candidate judgment calls are shown as plain side-by-side numbers, not a computed threshold — same philosophy as the draft tool's ADP lookahead.
 
 **Tuesday prep** cross-references the rankings provider's separate "Waiver Wire" suggestion content (a written recommendation list, distinct from its numeric rankings tables) against what's actually available/unrostered in each league. This means rankings ingestion needs to handle at least two content types: numeric tables and editorial suggestion lists.
+
+**Starters** computes Keith's actual optimal lineup for the current week from his roster and the same weekly rankings data Weekly already syncs — filling each league's real slot structure (its `roster_slots` counts: QB/RB/WR/TE/DST/K, plus FLEX and, for superflex leagues, SUPER_FLEX). The rankings provider's per-position weekly lists (its own "RB list," "WR list," etc.) aren't on a comparable scale across positions, so a FLEX/SUPER_FLEX decision can't be made from position ranks alone — the provider's underlying widget also exposes two cross-position combined lists (RB/WR/TE combined, and QB/RB/WR/TE combined — the actual data behind its own Flex/Superflex tabs), which weekly ingestion now pulls alongside the six standard position lists and tags with a `list_type` column on `rankings` so they coexist without colliding. The assignment itself (`ffassistant/starters.py::compute_starters`) is a pure, DB-free greedy fill, top-down: dedicated positions first (best player at that exact position), then FLEX from whatever RB/WR/TE is left over (by the combined list), then SUPER_FLEX from whatever QB/RB/WR/TE remains (by its combined list) — skipping anyone already placed in a slot above, same as filling out a lineup card by hand. Unranked/injured rostered players still fill a slot if nothing better is available (never excluded), same philosophy as Weekly's unranked-sorts-last convention; the whole roster is always returned (slots plus a bench list), nothing is ever dropped.
 
 ## Win/loss tracking design
 

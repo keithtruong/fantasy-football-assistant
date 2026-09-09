@@ -59,6 +59,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "source" not in player_news_columns:
         conn.execute("ALTER TABLE player_news ADD COLUMN source TEXT")
 
+    rankings_columns = {row["name"] for row in conn.execute("PRAGMA table_info(rankings)")}
+    if "list_type" not in rankings_columns:
+        conn.execute("ALTER TABLE rankings ADD COLUMN list_type TEXT")
+
     _migrate_leagues_platform_check(conn)
 
 

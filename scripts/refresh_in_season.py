@@ -41,6 +41,11 @@ LOG_PATH = REPO_ROOT / "data" / "refresh_log.txt"
 # leagues need, so it covers all of them.
 SCORING_FORMATS = ("full_ppr", "half_ppr", "non_ppr", "superflex")
 
+# Weekly rankings have no superflex list at all (see
+# ffassistant.connectors.rankings._SCORING_CODES) — only reception scoring
+# varies, so this is SCORING_FORMATS minus "superflex".
+WEEKLY_SCORING_FORMATS = ("full_ppr", "half_ppr", "non_ppr")
+
 
 def refresh_rosters(conn, season, week):
     leagues = conn.execute(
@@ -61,15 +66,19 @@ def refresh_rosters(conn, season, week):
 
 
 def refresh_weekly(conn, season, week):
-    try:
-        sync_weekly_rankings(conn, season, week)
-        count = conn.execute(
-            "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ?",
-            (season, week),
-        ).fetchone()["c"]
-        return True, f"{count} players", None
-    except Exception as e:
-        return False, None, str(e)
+    per_format = {}
+    errors = []
+    for scoring_format in WEEKLY_SCORING_FORMATS:
+        try:
+            sync_weekly_rankings(conn, season, week, scoring_format)
+            per_format[scoring_format] = conn.execute(
+                "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ? "
+                "AND scoring_format = ?",
+                (season, week, scoring_format),
+            ).fetchone()["c"]
+        except Exception as e:
+            errors.append(f"{scoring_format}: {e}")
+    return per_format, errors
 
 
 def refresh_ros(conn, season):
@@ -123,12 +132,13 @@ def main(argv=None):
             "week1_start_date fallback set in League Settings; or pass --week)"
         )
     else:
-        ok, detail, error = refresh_weekly(conn, season, week)
-        if ok:
-            lines.append(f"Weekly rankings (week {week}): {detail}")
-        else:
+        weekly_counts, weekly_errors = refresh_weekly(conn, season, week)
+        if weekly_counts:
+            summary = ", ".join(f"{fmt}={count}" for fmt, count in weekly_counts.items())
+            lines.append(f"Weekly rankings (week {week}): {summary}")
+        for error in weekly_errors:
             had_failure = True
-            lines.append(f"Weekly rankings (week {week}): FAILED — {error}")
+            lines.append(f"  Weekly FAILED — {error}")
 
     ros_counts, ros_errors = refresh_ros(conn, season)
     if ros_counts:

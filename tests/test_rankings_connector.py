@@ -99,7 +99,6 @@ class TestGetWeeklyRankings(unittest.TestCase):
             "weekly": {
                 "base_url": "https://example.invalid/expert-rankings.php",
                 "expert_id": "534",
-                "scoring": "HALF",
             }
         }
         mock_response = MagicMock()
@@ -107,7 +106,7 @@ class TestGetWeeklyRankings(unittest.TestCase):
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
-        result = rankings.get_weekly_rankings(season=2026, week=1, position="RB")
+        result = rankings.get_weekly_rankings(season=2026, week=1, position="RB", scoring_format="half_ppr")
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["full_name"], "Saquon Barkley")

@@ -1,23 +1,32 @@
 import { api } from "./api.js";
 import { positionColor } from "./positions.js";
 import { renderScheduleTab } from "./schedule.js";
+import { renderStartersTab } from "./starters.js";
 
 const WEEKLY_POSITIONS = ["QB", "RB", "WR", "TE", "DST", "K"];
 const ROS_POSITIONS = ["QB", "RB", "WR", "TE"];
 
 export async function renderInSeasonView(container, state) {
-  const view = state.inSeasonTab; // "weekly" | "ros" | "schedule"
+  const view = state.inSeasonTab; // "weekly" | "starters" | "ros" | "schedule"
 
   if (view === "schedule") {
     await renderScheduleTab(container, state);
     return;
   }
 
-  if (view === "weekly" && !state.week) {
+  if ((view === "weekly" || view === "starters") && !state.week) {
     const prompt = document.createElement("p");
     prompt.className = "in-season-prompt";
-    prompt.textContent = "Enter a week number above to see this week's rostered-vs-available breakdown.";
+    prompt.textContent =
+      view === "starters"
+        ? "Enter a week number above to see this week's optimal starting lineup."
+        : "Enter a week number above to see this week's rostered-vs-available breakdown.";
     container.appendChild(prompt);
+    return;
+  }
+
+  if (view === "starters") {
+    await renderStartersTab(container, state);
     return;
   }
 
@@ -166,13 +175,6 @@ function buildColumn(players, kind) {
     rankSpan.className = "in-season-rank";
     rankSpan.textContent = player.rank != null ? `#${player.rank}` : "Unranked";
     li.appendChild(rankSpan);
-
-    if (player.pos_rank != null) {
-      const posRankSpan = document.createElement("span");
-      posRankSpan.className = "in-season-rank";
-      posRankSpan.textContent = `${player.position}${player.pos_rank}`;
-      li.appendChild(posRankSpan);
-    }
 
     li.appendChild(document.createTextNode(" " + player.full_name));
 

@@ -68,7 +68,9 @@ class TestRefreshInSeason(unittest.TestCase):
         exit_code = refresh_in_season.main(["--season", "2026"])
         self.assertEqual(exit_code, 0)
         mock_current_week.assert_called_once()
-        mock_weekly.assert_called_once_with(self.conn, 2026, 3)
+        self.assertEqual(mock_weekly.call_count, len(refresh_in_season.WEEKLY_SCORING_FORMATS))
+        for scoring_format in refresh_in_season.WEEKLY_SCORING_FORMATS:
+            mock_weekly.assert_any_call(self.conn, 2026, 3, scoring_format)
         self.assertEqual(mock_ros.call_count, len(refresh_in_season.SCORING_FORMATS))
 
     @patch("ffassistant.season._fetch_live_week", return_value=None)

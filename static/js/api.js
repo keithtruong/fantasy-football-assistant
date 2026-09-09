@@ -121,14 +121,17 @@ export const api = {
     }),
   getRankingsSyncStatus: (season, scoringFormat) =>
     request(`/api/rankings/sync_status?season=${season}&scoring_format=${scoringFormat}`),
-  syncWeeklyRankings: (season, week) =>
+  // league_id, not scoring_format: weekly has no superflex list, so the
+  // server resolves this league's actual reception scoring itself rather
+  // than trusting the draft board's superflex-aware format from the client.
+  syncWeeklyRankings: (season, week, leagueId) =>
     request("/api/rankings/sync_weekly", {
       method: "POST",
       headers: JSON_HEADERS,
-      body: JSON.stringify({ season, week }),
+      body: JSON.stringify({ season, week, league_id: leagueId }),
     }),
-  getWeeklyRankingsSyncStatus: (season, week) =>
-    request(`/api/rankings/sync_status_weekly?season=${season}&week=${week}`),
+  getWeeklyRankingsSyncStatus: (season, week, leagueId) =>
+    request(`/api/rankings/sync_status_weekly?season=${season}&week=${week}&league_id=${leagueId}`),
   syncRosRankings: (season, scoringFormat) =>
     request("/api/rankings/sync_ros", {
       method: "POST",

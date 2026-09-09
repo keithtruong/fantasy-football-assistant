@@ -277,10 +277,14 @@ CREATE TABLE IF NOT EXISTS rankings (
     ranking_type    TEXT NOT NULL CHECK (ranking_type IN ('draft', 'weekly', 'ros')),
     season          INTEGER NOT NULL,
     week            INTEGER,   -- NULL for 'draft' and 'ros', set for 'weekly'
-    scoring_format  TEXT,      -- only meaningful for ranking_type = 'draft' (e.g. full_ppr, superflex)
+    scoring_format  TEXT,      -- full_ppr/half_ppr/non_ppr/superflex — meaningful for every ranking_type
     rank            INTEGER,
     tier            INTEGER,
     adp             REAL,      -- only meaningful for ranking_type = 'draft'
+    list_type       TEXT,      -- NULL for the standard per-position list; 'flex' (RB/WR/TE combined) or
+                                -- 'superflex' (QB/RB/WR/TE combined) for weekly's two cross-position lists,
+                                -- which share the same (player_id, ranking_type, season, week, scoring_format)
+                                -- key space as the six standard position rows — see ffassistant.starters
     fetched_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

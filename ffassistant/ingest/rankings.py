@@ -69,23 +69,43 @@ def _create_player_from_ranking(conn: sqlite3.Connection, row) -> int:
     return player_id
 
 
-def sync_weekly_rankings(conn: sqlite3.Connection, season: int, week: int) -> None:
-    # Full-snapshot sync: replace this season/week's rankings rather than diffing.
+# Beyond the six standard per-position lists, the partner API also exposes two
+# cross-position combined lists via these position codes: 'FLX' (RB/WR/TE combined)
+# and 'OP' ("offensive player" = QB/RB/WR/TE combined) — the actual data behind a
+# FLEX/superflex ranking, since per-position ranks aren't comparable across
+# positions. Tagged with list_type so they coexist with the six standard rows
+# under the same (player_id, ranking_type, season, week, scoring_format) key
+# without colliding — see ffassistant.starters, which is what consumes them.
+_WEEKLY_LIST_SPECS = [(p, None) for p in rankings_api.WEEKLY_POSITIONS] + [("FLX", "flex"), ("OP", "superflex")]
+
+
+def sync_weekly_rankings(conn: sqlite3.Connection, season: int, week: int, scoring_format: str) -> None:
+    """scoring_format is one of full_ppr/half_ppr/non_ppr — the partner API has no
+    separate superflex-scoring weekly list (only reception scoring varies here), so
+    callers should resolve a league's *reception* scoring only
+    (ffassistant.api.leagues.derive_reception_scoring), not its full superflex-aware
+    scoring_format.
+    """
+    # Full-snapshot sync: replace this season/week/scoring_format's rankings
+    # rather than diffing — scoped by scoring_format too, now that more than
+    # one format can coexist for the same season/week. Not scoped by list_type:
+    # this call fully owns and repopulates the whole set, standard positions and
+    # the two combined lists alike, every time.
     conn.execute(
-        "DELETE FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ?",
-        (season, week),
+        "DELETE FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ? AND scoring_format = ?",
+        (season, week, scoring_format),
     )
 
-    for position in rankings_api.WEEKLY_POSITIONS:
-        rows = rankings_api.get_weekly_rankings(season, week, position)
+    for position, list_type in _WEEKLY_LIST_SPECS:
+        rows = rankings_api.get_weekly_rankings(season, week, position, scoring_format)
         for row in rows:
             player_id = match_player(conn, "rankings_provider", row["full_name"], row["position"])
             if player_id is None:
                 continue  # queued in unresolved_aliases; skip until manually resolved
             conn.execute(
-                "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
-                "VALUES (?, 'weekly', ?, ?, 'half_ppr', ?)",
-                (player_id, season, week, row["rank"]),
+                "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank, list_type) "
+                "VALUES (?, 'weekly', ?, ?, ?, ?, ?)",
+                (player_id, season, week, scoring_format, row["rank"], list_type),
             )
     conn.commit()
 

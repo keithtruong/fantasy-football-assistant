@@ -20,20 +20,27 @@ class InSeasonTestCase(ApiTestCase):
         conn.execute("INSERT INTO roster_spots (team_id, player_id) VALUES (1, 4)")  # Unranked RB -> mine
         conn.execute("INSERT INTO roster_spots (team_id, player_id) VALUES (2, 3)")  # Bijan -> rival team
 
+        # League 1's league_scoring has rec=1 (from ApiTestCase._seed), so
+        # derive_reception_scoring resolves it to 'full_ppr' — these rows need
+        # to match that, now that weekly rankings are scoring-format-scoped.
         conn.execute(
-            "INSERT INTO rankings (player_id, ranking_type, season, week, rank) VALUES (2, 'weekly', ?, ?, 20)",
+            "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
+            "VALUES (2, 'weekly', ?, ?, 'full_ppr', 20)",
             (SEASON, WEEK),
         )
         conn.execute(
-            "INSERT INTO rankings (player_id, ranking_type, season, week, rank) VALUES (3, 'weekly', ?, ?, 5)",
+            "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
+            "VALUES (3, 'weekly', ?, ?, 'full_ppr', 5)",
             (SEASON, WEEK),
         )
         conn.execute(
-            "INSERT INTO rankings (player_id, ranking_type, season, week, rank) VALUES (5, 'weekly', ?, ?, 3)",
+            "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
+            "VALUES (5, 'weekly', ?, ?, 'full_ppr', 3)",
             (SEASON, WEEK),
         )
         conn.execute(
-            "INSERT INTO rankings (player_id, ranking_type, season, week, rank) VALUES (1, 'weekly', ?, ?, 8)",
+            "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
+            "VALUES (1, 'weekly', ?, ?, 'full_ppr', 8)",
             (SEASON, WEEK),
         )
         conn.execute(
@@ -195,9 +202,12 @@ class TestInSeasonRosView(InSeasonTestCase):
         super().setUp()
         conn = self._connect_for_seeding()
         self._seed_in_season(conn)
-        # ROS rankings: no week, per schema convention.
+        # ROS rankings: no week, per schema convention. League 1 has no SUPER_FLEX
+        # slot, so derive_scoring_format falls through to reception scoring —
+        # same 'full_ppr' as the weekly rows above (rec=1 in league_scoring).
         conn.execute(
-            "INSERT INTO rankings (player_id, ranking_type, season, week, rank) VALUES (5, 'ros', ?, NULL, 4)",
+            "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
+            "VALUES (5, 'ros', ?, NULL, 'full_ppr', 4)",
             (SEASON,),
         )
         conn.commit()

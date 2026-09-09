@@ -8,8 +8,7 @@
     },
     "weekly": {
         "base_url": "",
-        "expert_id": "",
-        "scoring": ""
+        "expert_id": ""
     },
     "tier_urls": {
         "QB": "",

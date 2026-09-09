@@ -201,11 +201,25 @@ def _parse_jsonp(text: str) -> dict:
     return json.loads(text[start:end])
 
 
-def get_weekly_rankings(season: int, week: int, position: str) -> list[dict]:
-    """Fetch one position's weekly rankings for a season/week. Public endpoint — no cookie needed.
+# The partner API's own scoring codes — confirmed by direct testing that each
+# returns genuinely different rankings (e.g. Bijan Robinson ranks 4th under STD
+# but 3rd under HALF/PPR), not just a label change. No superflex code exists
+# here — weekly by-position rankings don't have a separate superflex list,
+# unlike the draft Top-300 board (see ffassistant.api.leagues.derive_reception_scoring).
+_SCORING_CODES = {"full_ppr": "PPR", "half_ppr": "HALF", "non_ppr": "STD"}
+
+
+def get_weekly_rankings(season: int, week: int, position: str, scoring_format: str) -> list[dict]:
+    """Fetch one position's weekly rankings for a season/week/scoring_format.
+    Public endpoint — no cookie needed. scoring_format is one of
+    full_ppr/half_ppr/non_ppr (see _SCORING_CODES).
 
     Returns a list of dicts: full_name, position, nfl_team, rank, position_rank, bye_week, opponent.
     """
+    scoring_code = _SCORING_CODES.get(scoring_format)
+    if scoring_code is None:
+        raise ValueError(f"weekly rankings scoring_format must be one of {sorted(_SCORING_CODES)} — got {scoring_format!r}")
+
     weekly_config = get_rankings_config()["weekly"]
     params = {
         "callback": "FPW.rankingsCB",
@@ -214,7 +228,7 @@ def get_weekly_rankings(season: int, week: int, position: str) -> list[dict]:
         "year": season,
         "week": week,
         "id": weekly_config["expert_id"],
-        "scoring": weekly_config["scoring"],
+        "scoring": scoring_code,
         "type": "WEEKLY",
     }
     resp = requests.get(weekly_config["base_url"], params=params, timeout=30)

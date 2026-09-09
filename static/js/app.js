@@ -201,12 +201,12 @@ async function refreshSyncStatus() {
 }
 
 async function refreshWeeklySyncStatus() {
-  if (!state.week) {
+  if (!state.week || !state.leagueId) {
     weeklyRankingsSyncStatus.textContent = "";
     return;
   }
   try {
-    const status = await api.getWeeklyRankingsSyncStatus(state.season, state.week);
+    const status = await api.getWeeklyRankingsSyncStatus(state.season, state.week, state.leagueId);
     weeklyRankingsSyncStatus.textContent = formatSyncedAt(status.synced_at);
     weeklyRankingsSyncStatus.className = "rankings-sync-status";
   } catch {
@@ -236,16 +236,19 @@ async function refreshNewsSyncStatus() {
 
 // Only the active in-season sub-tab's refresh control is relevant — Schedule
 // needs none of these, and showing weekly's and ROS's buttons together just
-// invites clicking the wrong one for the view you're looking at. Player news
-// isn't week/format-scoped, so it's shown for either Weekly or ROS.
+// invites clicking the wrong one for the view you're looking at. Starters reads
+// the exact same weekly rankings data (including the FLEX/SUPER_FLEX combined
+// lists), so it shares Weekly's refresh button rather than getting its own.
+// Player news isn't week/format-scoped, so it's shown for Weekly or ROS —
+// Starters has no news card of its own.
 function updateInSeasonControlsVisibility() {
-  const showWeekly = state.inSeasonTab === "weekly";
+  const showWeekly = state.inSeasonTab === "weekly" || state.inSeasonTab === "starters";
   const showRos = state.inSeasonTab === "ros";
   refreshWeeklyRankingsButton.style.display = showWeekly ? "" : "none";
   weeklyRankingsSyncStatus.style.display = showWeekly ? "" : "none";
   refreshRosRankingsButton.style.display = showRos ? "" : "none";
   rosRankingsSyncStatus.style.display = showRos ? "" : "none";
-  const showNews = showWeekly || showRos;
+  const showNews = state.inSeasonTab === "weekly" || state.inSeasonTab === "ros";
   refreshNewsButton.style.display = showNews ? "" : "none";
   newsSyncStatus.style.display = showNews ? "" : "none";
 }
@@ -323,7 +326,7 @@ function init() {
     weeklyRankingsSyncStatus.textContent = "Refreshing…";
     weeklyRankingsSyncStatus.className = "rankings-sync-status";
     try {
-      const result = await api.syncWeeklyRankings(state.season, state.week);
+      const result = await api.syncWeeklyRankings(state.season, state.week, state.leagueId);
       const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
       weeklyRankingsSyncStatus.textContent =
         `${formatSyncedAt(result.synced_at)} — ${result.player_count} players${unresolvedNote}`;

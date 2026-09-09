@@ -96,7 +96,18 @@ def get_sync_status():
 
 @rankings_admin_bp.post("/sync_weekly")
 def sync_weekly_rankings():
-    """On-demand refresh for the in-season Weekly tab's rank list."""
+    """On-demand refresh for the in-season Weekly tab's rank list — one
+    scoring format at a time, same convention as draft/ROS. Only
+    full_ppr/half_ppr/non_ppr are valid here (no superflex weekly list exists
+    — see ffassistant.api.leagues.derive_reception_scoring).
+
+    Pass either `scoring_format` directly (e.g. from the refresh script, which
+    loops over all three itself) or `league_id` to have this resolve the
+    correct format from that league's own settings — the frontend's "Refresh
+    Weekly Rankings" button only ever has the draft board's superflex-aware
+    format handy (from GET /api/leagues), which isn't a valid weekly format on
+    its own, so it passes league_id instead of trying to translate that itself.
+    """
     db = get_db()
     body = request.get_json(silent=True) or {}
     season = int(body.get("season") or datetime.date.today().year)
@@ -105,17 +116,26 @@ def sync_weekly_rankings():
         abort(400, description="week is required")
     week = int(week)
 
+    league_id = body.get("league_id")
+    if league_id is not None:
+        from ffassistant.api.leagues import derive_reception_scoring
+
+        scoring_format = derive_reception_scoring(db, int(league_id))
+    else:
+        scoring_format = body.get("scoring_format", "full_ppr")
+
     from ffassistant.ingest import rankings as rankings_ingest
     from ffassistant.name_matching import list_unresolved
 
     try:
-        rankings_ingest.sync_weekly_rankings(db, season, week)
+        rankings_ingest.sync_weekly_rankings(db, season, week, scoring_format)
     except Exception as e:
         abort(502, description=f"Weekly rankings sync failed: {e}")
 
     player_count = db.execute(
-        "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ?",
-        (season, week),
+        "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ? "
+        "AND scoring_format = ?",
+        (season, week, scoring_format),
     ).fetchone()["c"]
     unresolved_count = len(list_unresolved(db, "rankings_provider"))
 
@@ -123,19 +143,30 @@ def sync_weekly_rankings():
         {
             "player_count": player_count,
             "unresolved_count": unresolved_count,
-            "synced_at": _last_synced_at_weekly(db, season, week),
+            "synced_at": _last_synced_at_weekly(db, season, week, scoring_format),
+            "scoring_format": scoring_format,
         }
     )
 
 
 @rankings_admin_bp.get("/sync_status_weekly")
 def get_sync_status_weekly():
+    """Same league_id-or-scoring_format resolution as POST /sync_weekly."""
     db = get_db()
     season = request.args.get("season", type=int) or datetime.date.today().year
     week = request.args.get("week", type=int)
     if week is None:
         abort(400, description="week is required")
-    return jsonify({"synced_at": _last_synced_at_weekly(db, season, week)})
+
+    league_id = request.args.get("league_id", type=int)
+    if league_id is not None:
+        from ffassistant.api.leagues import derive_reception_scoring
+
+        scoring_format = derive_reception_scoring(db, league_id)
+    else:
+        scoring_format = request.args.get("scoring_format", "full_ppr")
+
+    return jsonify({"synced_at": _last_synced_at_weekly(db, season, week, scoring_format), "scoring_format": scoring_format})
 
 
 @rankings_admin_bp.post("/sync_ros")
@@ -189,10 +220,10 @@ def _last_synced_at(db, ranking_type, season, scoring_format):
     return row["synced_at"]
 
 
-def _last_synced_at_weekly(db, season, week):
+def _last_synced_at_weekly(db, season, week, scoring_format):
     row = db.execute(
         "SELECT MAX(fetched_at) AS synced_at FROM rankings WHERE ranking_type = 'weekly' "
-        "AND season = ? AND week = ?",
-        (season, week),
+        "AND season = ? AND week = ? AND scoring_format = ?",
+        (season, week, scoring_format),
     ).fetchone()
     return row["synced_at"]
