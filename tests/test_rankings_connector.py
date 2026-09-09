@@ -46,7 +46,7 @@ class TestGetDraftRankings(unittest.TestCase):
             "draft_urls": {"full_ppr": "https://example.invalid/full-ppr"},
         }
         mock_response = MagicMock()
-        mock_response.text = make_page_html(FAKE_ROWS)
+        mock_response.content = make_page_html(FAKE_ROWS).encode("utf-8")
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -145,7 +145,7 @@ class TestGetTiers(unittest.TestCase):
             ]
         )
         mock_response = MagicMock()
-        mock_response.text = html_body
+        mock_response.content = html_body.encode("utf-8")
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -173,7 +173,7 @@ class TestGetTiers(unittest.TestCase):
             ]
         )
         mock_response = MagicMock()
-        mock_response.text = html_body
+        mock_response.content = html_body.encode("utf-8")
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -192,7 +192,7 @@ class TestGetTiers(unittest.TestCase):
             ["<b>Tier 12: Jordan James &gt; Kaytron Allen &gt; Jaydon Blue</b>"]
         )
         mock_response = MagicMock()
-        mock_response.text = html_body
+        mock_response.content = html_body.encode("utf-8")
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -220,7 +220,7 @@ class TestGetTiers(unittest.TestCase):
             ["<b>Tier 7: Terrance Ferguson, Oronde Gadsden II, Cade Otton</b>"]
         )
         mock_response = MagicMock()
-        mock_response.text = html_body
+        mock_response.content = html_body.encode("utf-8")
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
@@ -234,6 +234,30 @@ class TestGetTiers(unittest.TestCase):
                 {"full_name": "Cade Otton", "tier": 7},
             ],
         )
+
+
+    @patch("ffassistant.connectors.rankings.get_rankings_config")
+    @patch("ffassistant.connectors.rankings.requests.get")
+    def test_repairs_leaked_cp1252_apostrophe(self, mock_get, mock_config):
+        # Tier copy is occasionally pasted in from a Windows-1252 source, leaking
+        # a raw 0x92 byte (right single quote) into an otherwise UTF-8 page. A
+        # strict/replace UTF-8 decode turns that into U+FFFD, mangling the name
+        # ("Dont'e Thornton" -> "Dont�e Thornton") so it never matches.
+        mock_config.return_value = {
+            "cookie": "session_name=abc123",
+            "tier_urls": {"WR": "https://example.invalid/wr-tiers"},
+        }
+        html_body = make_tier_page_html(
+            ["<b>Tier 4: Dont" + bytes([0x92]).decode("cp1252") + "e Thornton (WR40)</b>"]
+        )
+        mock_response = MagicMock()
+        mock_response.content = html_body.encode("cp1252")
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = rankings.get_tiers("WR")
+
+        self.assertEqual(result, [{"full_name": "Dont’e Thornton", "tier": 4}])
 
 
 if __name__ == "__main__":

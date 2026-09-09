@@ -33,6 +33,35 @@ _HEADERS = {
 
 _JSON_MARKER = "JSON.parse(`{"
 
+# Tier pages are editorial copy, occasionally pasted in from a Windows-1252
+# source (Word/Google Docs smart quotes) into an otherwise UTF-8 page. A lone
+# leaked byte like 0x92 is invalid as a UTF-8 lead byte, so a strict/replace
+# UTF-8 decode collapses it to U+FFFD and mangles names ("Dont’e Thornton"
+# -> "Dont�e Thornton"), which then fail name-matching entirely. Map the
+# common leaked bytes back to their intended characters instead of losing them.
+_CP1252_LEAKS = {
+    0x85: "…",  # …
+    0x91: "‘",  # '
+    0x92: "’",  # '
+    0x93: "“",  # "
+    0x94: "”",  # "
+    0x96: "–",  # –
+    0x97: "—",  # —
+}
+
+
+def _decode_utf8_with_cp1252_leaks(raw: bytes) -> str:
+    pieces = []
+    while True:
+        try:
+            pieces.append(raw.decode("utf-8"))
+            break
+        except UnicodeDecodeError as e:
+            pieces.append(raw[: e.start].decode("utf-8"))
+            pieces.append(_CP1252_LEAKS.get(raw[e.start], "�"))
+            raw = raw[e.end :]
+    return "".join(pieces)
+
 
 def _extract_rows(html: str) -> list[dict]:
     """Pull the embedded rows array out of the page's server-rendered HTML."""
@@ -85,8 +114,7 @@ def _fetch_with_cookie(url: str) -> str:
 
     resp = requests.get(url, headers=_HEADERS, cookies=cookies, timeout=30)
     resp.raise_for_status()
-    resp.encoding = "utf-8"
-    return resp.text
+    return _decode_utf8_with_cp1252_leaks(resp.content)
 
 
 def get_draft_rankings(scoring_format: str) -> list[dict]:
