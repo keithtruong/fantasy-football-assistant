@@ -72,7 +72,7 @@ function buildSlotRow(slot) {
   li.appendChild(chip);
 
   if (slot.player) {
-    li.appendChild(buildPlayerLine(slot.player));
+    li.appendChild(buildPlayerLine(slot.player, rankFieldForSlot(slot.slot_name)));
   } else {
     const empty = el("span", "in-season-empty");
     empty.textContent = " No eligible player";
@@ -119,11 +119,23 @@ function buildRankBadge(label, rank) {
   return span;
 }
 
-function buildPlayerLine(player) {
+// A filled slot shows the rank from whichever list ffassistant.starters.compute_starters
+// actually used to pick this player for it — a FLEX slot is filled by flex_rank
+// (the RB/WR/TE combined list) and SUPER_FLEX by op_rank (the QB/RB/WR/TE combined
+// list), not by the player's own position rank, since those are what the algorithm
+// compared to fill that particular slot.
+function rankFieldForSlot(slotName) {
+  if (slotName === "FLEX") return "flex_rank";
+  if (slotName === "SUPER_FLEX") return "op_rank";
+  return "rank";
+}
+
+function buildPlayerLine(player, rankField = "rank") {
   const frag = document.createDocumentFragment();
 
+  const rank = player[rankField];
   const rankSpan = el("span", "in-season-rank");
-  rankSpan.textContent = player.rank != null ? `#${player.rank}` : "Unranked";
+  rankSpan.textContent = rank != null ? `#${rank}` : "Unranked";
   frag.appendChild(rankSpan);
 
   frag.appendChild(document.createTextNode(" " + player.full_name));
