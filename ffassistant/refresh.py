@@ -16,7 +16,7 @@ import datetime
 
 from ffassistant.config import REPO_ROOT
 from ffassistant.ingest import sync_league_from_platform
-from ffassistant.ingest.news import sync_player_news
+from ffassistant.ingest.news import sync_player_news_from_file
 from ffassistant.ingest.rankings import sync_ros_rankings, sync_weekly_rankings
 from ffassistant.name_matching import list_unresolved
 from ffassistant.season import smart_current_week
@@ -84,8 +84,12 @@ def refresh_ros(conn, season):
 
 
 def refresh_news(conn):
+    """Reads Rotoworld items from the file a scheduled Cowork task drops
+    (see ffassistant.ingest.news) rather than calling the Anthropic API
+    directly — a missing/stale file fails clearly here instead of silently
+    falling back to the paid path."""
     try:
-        sync_player_news(conn)
+        sync_player_news_from_file(conn)
         count = conn.execute("SELECT COUNT(*) AS c FROM player_news").fetchone()["c"]
         return True, f"{count} headlines matched", None
     except Exception as e:

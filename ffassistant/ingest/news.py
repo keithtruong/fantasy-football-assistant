@@ -11,23 +11,58 @@ through name_matching.match_player's alias-recording/unresolved_aliases
 machinery, since most items are about players never rostered in any of
 Keith's leagues at all, and queuing every miss for manual review would just
 be noise. Ambiguous normalized-name collisions are skipped, not guessed at.
+
+Two ways to get the extracted items in: sync_player_news() calls the
+Anthropic API directly (extract_news_items) — a metered cost on top of
+whatever Claude plan is already paying for Claude Code/Cowork. The
+extraction step has no dependency on this project's own data (it's a pure
+read of the public Rotoworld page), so sync_player_news_from_file() instead
+reads that same shape from a JSON file a scheduled Cowork task drops at
+ffassistant.config.ROTOWORLD_NEWS_IMPORT_PATH — see scripts/refresh_in_season.py,
+which uses the file-based path by default. Digest generation always stays
+local either way: it needs to know which players are actually rostered,
+which only this project's own DB can answer.
 """
 
+import json
 import sqlite3
 
 from ffassistant import claude_news
+from ffassistant.claude_news import NewsItem
+from ffassistant.config import ROTOWORLD_NEWS_IMPORT_PATH
 from ffassistant.connectors import nbc_news
 from ffassistant.name_matching import normalize
 
 
 def sync_player_news(conn: sqlite3.Connection) -> None:
-    """Full-replace sync for player_news and player_news_digest — same
-    convention as sync_weekly_rankings/sync_ros_rankings. Not league/season/
-    week scoped — a player's news isn't tied to any of those.
-    """
+    """Full-replace sync for player_news and player_news_digest, extracting
+    items via a direct Anthropic API call (see module docstring for the
+    file-based alternative that avoids that cost)."""
     pages = nbc_news.fetch_recent_pages()
     items = claude_news.extract_news_items(pages)
+    _sync_items(conn, items)
 
+
+def sync_player_news_from_file(conn: sqlite3.Connection, file_path=None) -> None:
+    """Full-replace sync using items already extracted by a scheduled Cowork
+    task rather than calling the Anthropic API here. Raises FileNotFoundError
+    if nothing's been dropped yet — deliberately not a silent fall-through to
+    the paid API path, so a broken/missed Cowork run surfaces as a clear
+    failure in the refresh log instead of quietly costing money again.
+
+    Expected file shape: {"fetched_at": "<ISO-8601>", "items": [<NewsItem fields>, ...]}
+    """
+    path = file_path or ROTOWORLD_NEWS_IMPORT_PATH
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found — the scheduled Cowork task hasn't dropped a fresh export yet"
+        )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    items = [NewsItem(**item) for item in payload["items"]]
+    _sync_items(conn, items)
+
+
+def _sync_items(conn: sqlite3.Connection, items: list[NewsItem]) -> None:
     players = conn.execute("SELECT player_id, full_name FROM players").fetchall()
     full_name_by_id = {row["player_id"]: row["full_name"] for row in players}
     by_normalized: dict[str, list[int]] = {}

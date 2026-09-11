@@ -7,13 +7,19 @@ news_bp = Blueprint("news", __name__, url_prefix="/api/news")
 
 @news_bp.post("/sync")
 def sync_news():
-    """On-demand refresh for player news headlines (not league/season/week scoped)."""
+    """On-demand refresh for player news headlines (not league/season/week scoped).
+
+    Re-ingests whatever a scheduled Cowork task last dropped (see
+    ffassistant.ingest.news.sync_player_news_from_file) rather than calling
+    the Anthropic API directly — that avoids a metered cost on every click,
+    but means this button reflects Cowork's last run, not a fresh extraction.
+    """
     db = get_db()
 
-    from ffassistant.ingest.news import sync_player_news
+    from ffassistant.ingest.news import sync_player_news_from_file
 
     try:
-        sync_player_news(db)
+        sync_player_news_from_file(db)
     except Exception as e:
         abort(502, description=f"Player news sync failed: {e}")
 

@@ -4,7 +4,7 @@ from tests.test_api import ApiTestCase
 
 
 class TestNewsSyncApi(ApiTestCase):
-    @patch("ffassistant.ingest.news.sync_player_news")
+    @patch("ffassistant.ingest.news.sync_player_news_from_file")
     def test_sync_calls_ingest_and_reports_counts(self, mock_sync):
         resp = self.client.post("/api/news/sync")
         self.assertEqual(resp.status_code, 200)
@@ -14,7 +14,7 @@ class TestNewsSyncApi(ApiTestCase):
         self.assertIn("headline_count", data)
         self.assertIn("synced_at", data)
 
-    @patch("ffassistant.ingest.news.sync_player_news", side_effect=RuntimeError("feed unreachable"))
+    @patch("ffassistant.ingest.news.sync_player_news_from_file", side_effect=RuntimeError("feed unreachable"))
     def test_sync_failure_returns_502_json(self, _mock):
         resp = self.client.post("/api/news/sync")
         self.assertEqual(resp.status_code, 502)

@@ -54,7 +54,7 @@ class TestRefresh(unittest.TestCase):
         self.assertEqual(results, [("Active Sleeper League", False, "boom")])
 
     @patch("ffassistant.ingest.sleeper.sync_league")
-    @patch.object(refresh, "sync_player_news")
+    @patch.object(refresh, "sync_player_news_from_file")
     @patch.object(refresh, "sync_weekly_rankings")
     @patch.object(refresh, "sync_ros_rankings")
     @patch.object(refresh, "smart_current_week", return_value=3)
@@ -71,7 +71,7 @@ class TestRefresh(unittest.TestCase):
 
     @patch("ffassistant.season._fetch_live_week", return_value=None)
     @patch("ffassistant.ingest.sleeper.sync_league")
-    @patch.object(refresh, "sync_player_news")
+    @patch.object(refresh, "sync_player_news_from_file")
     @patch.object(refresh, "sync_ros_rankings")
     def test_run_full_refresh_skips_weekly_when_no_current_week(self, mock_ros, _mock_news, _mock_sleeper, _mock_live):
         # No season_settings row configured and live lookup disabled -> smart_current_week() returns None.
@@ -82,7 +82,7 @@ class TestRefresh(unittest.TestCase):
         self.assertIn("Weekly rankings: SKIPPED", log_text)
 
     @patch("ffassistant.ingest.sleeper.sync_league")
-    @patch.object(refresh, "sync_player_news")
+    @patch.object(refresh, "sync_player_news_from_file")
     @patch.object(refresh, "sync_weekly_rankings")
     @patch.object(refresh, "sync_ros_rankings", side_effect=RuntimeError("cookie expired"))
     def test_run_full_refresh_flags_failure_when_anything_fails(self, _mock_ros, _mock_weekly, _mock_news, _mock_sleeper):
@@ -92,7 +92,7 @@ class TestRefresh(unittest.TestCase):
         self.assertIn("full_ppr: cookie expired", summary["ros"]["errors"])
 
     @patch("ffassistant.ingest.sleeper.sync_league")
-    @patch.object(refresh, "sync_player_news")
+    @patch.object(refresh, "sync_player_news_from_file")
     @patch.object(refresh, "sync_weekly_rankings")
     @patch.object(refresh, "sync_ros_rankings")
     def test_run_full_refresh_writes_to_log_file(self, _mock_ros, _mock_weekly, _mock_news, _mock_sleeper):
@@ -102,7 +102,7 @@ class TestRefresh(unittest.TestCase):
         self.assertIn("season=2026 week=1", log_text)
         self.assertIn("Rosters/status: 1/1 leagues synced", log_text)
 
-    @patch.object(refresh, "sync_player_news")
+    @patch.object(refresh, "sync_player_news_from_file")
     def test_refresh_news_reports_count(self, mock_sync):
         self.conn.execute(
             "INSERT INTO players (player_id, full_name, position) VALUES (1, 'Someone', 'WR')"
@@ -118,7 +118,7 @@ class TestRefresh(unittest.TestCase):
         self.assertIsNone(error)
         mock_sync.assert_called_once_with(self.conn)
 
-    @patch.object(refresh, "sync_player_news", side_effect=RuntimeError("feed down"))
+    @patch.object(refresh, "sync_player_news_from_file", side_effect=RuntimeError("feed down"))
     def test_refresh_news_reports_failure(self, _mock_sync):
         ok, detail, error = refresh.refresh_news(self.conn)
         self.assertFalse(ok)
@@ -144,7 +144,7 @@ class TestRunRostersOnlyRefresh(unittest.TestCase):
         self.tmpdir.cleanup()
 
     @patch("ffassistant.ingest.sleeper.sync_league")
-    @patch.object(refresh, "sync_player_news")
+    @patch.object(refresh, "sync_player_news_from_file")
     @patch.object(refresh, "sync_weekly_rankings")
     @patch.object(refresh, "sync_ros_rankings")
     def test_only_touches_rosters(self, mock_ros, mock_weekly, mock_news, mock_sleeper):

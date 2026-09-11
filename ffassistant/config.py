@@ -45,3 +45,8 @@ def get_rankings_cookie(path: Path = RANKINGS_CONFIG_PATH) -> dict:
 
 
 DB_PATH = REPO_ROOT / "data" / "ffassistant.db"
+
+# Dropped by a scheduled Cowork task (extracted Rotoworld player-news items) —
+# see ffassistant.ingest.news.sync_player_news_from_file. Matches the existing
+# "data/*.json" gitignore pattern for regenerable cached platform data.
+ROTOWORLD_NEWS_IMPORT_PATH = REPO_ROOT / "data" / "rotoworld_news.json"

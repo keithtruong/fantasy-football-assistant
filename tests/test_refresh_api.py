@@ -24,7 +24,7 @@ class RefreshLogIsolatedApiTestCase(ApiTestCase):
 
 
 class TestRefreshAllApi(RefreshLogIsolatedApiTestCase):
-    @patch("ffassistant.refresh.sync_player_news")
+    @patch("ffassistant.refresh.sync_player_news_from_file")
     @patch("ffassistant.refresh.sync_ros_rankings")
     @patch("ffassistant.refresh.sync_weekly_rankings")
     @patch("ffassistant.ingest.sleeper.sync_league")
@@ -44,7 +44,7 @@ class TestRefreshAllApi(RefreshLogIsolatedApiTestCase):
         self.assertEqual(mock_weekly.call_count, 3)  # full_ppr/half_ppr/non_ppr
         self.assertEqual(mock_ros.call_count, 4)  # + superflex
 
-    @patch("ffassistant.refresh.sync_player_news")
+    @patch("ffassistant.refresh.sync_player_news_from_file")
     @patch("ffassistant.refresh.sync_ros_rankings")
     @patch("ffassistant.refresh.sync_weekly_rankings")
     @patch("ffassistant.ingest.sleeper.sync_league", side_effect=RuntimeError("platform down"))
@@ -55,7 +55,7 @@ class TestRefreshAllApi(RefreshLogIsolatedApiTestCase):
         self.assertTrue(data["had_failure"])
         self.assertEqual(data["rosters"]["failures"], [{"league": "Test League", "error": "platform down"}])
 
-    @patch("ffassistant.refresh.sync_player_news")
+    @patch("ffassistant.refresh.sync_player_news_from_file")
     @patch("ffassistant.refresh.sync_ros_rankings")
     @patch("ffassistant.refresh.sync_weekly_rankings")
     @patch("ffassistant.ingest.sleeper.sync_league")
