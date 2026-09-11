@@ -1392,6 +1392,39 @@ table.scoring-table td:last-child {
   border-bottom: none;
 }
 
+.starters-all-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  align-items: flex-start;
+}
+
+.starters-team-card {
+  flex: 0 0 320px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.starters-team-card h4 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+}
+
+.starters-team-card h5 {
+  font-size: 12.5px;
+  margin: 0 0 4px;
+  color: var(--ink-muted);
+}
+
+.starters-team-card .starters-slot-list,
+.starters-team-card .starters-bench-list {
+  max-width: none;
+}
+
 /* ---- Exposure ---- */
 
 .exposure-view {

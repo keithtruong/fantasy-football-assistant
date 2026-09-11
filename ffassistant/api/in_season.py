@@ -101,10 +101,23 @@ def get_in_season(league_id):
 
 def _get_starters(db, league_id, season, week):
     """Optimal starting lineup for Keith's own team this week — see
+    _compute_starters_for_league for the actual computation."""
+    result = _compute_starters_for_league(db, league_id, season, week)
+    if result is None:
+        abort(400, description="No team is marked as yours in this league yet — set it in League Settings")
+    return jsonify(result)
+
+
+def _compute_starters_for_league(db, league_id, season, week):
+    """Optimal starting lineup for Keith's own team in one league — see
     ffassistant.starters.compute_starters for the assignment algorithm. Uses the
     same reception-scoring resolution as the Weekly view (the combined FLEX/
     SUPER_FLEX lists vary by scoring format too, independent of whether this
     league actually has those slots).
+
+    Returns None (rather than raising) if no team is marked as Keith's own in
+    this league yet, so a cross-league caller (see get_starters_all) can just
+    skip it instead of failing the whole request over one unconfigured league.
     """
     from ffassistant.api.leagues import derive_reception_scoring
     from ffassistant.starters import compute_starters
@@ -115,7 +128,7 @@ def _get_starters(db, league_id, season, week):
         "SELECT team_id FROM teams WHERE league_id = ? AND is_mine = 1", (league_id,)
     ).fetchone()
     if my_team is None:
-        abort(400, description="No team is marked as yours in this league yet — set it in League Settings")
+        return None
     team_id = my_team["team_id"]
 
     roster_slots = {
@@ -150,7 +163,48 @@ def _get_starters(db, league_id, season, week):
 
     result = compute_starters(roster_slots, players)
     result["scoring_format"] = scoring_format
-    return jsonify(result)
+    return result
+
+
+# Not league-scoped — every one of Keith's teams across all active leagues at
+# once, for the Starters tab's all-leagues view (see CLAUDE.md: the tab shows
+# every team side by side rather than gating behind the league selector,
+# similar in spirit to Exposure's cross-league scope).
+starters_all_bp = Blueprint("starters_all", __name__, url_prefix="/api")
+
+
+@starters_all_bp.get("/starters_all")
+def get_starters_all():
+    db = get_db()
+    season = request.args.get("season", type=int) or datetime.date.today().year
+    week = request.args.get("week", type=int)
+    if week is None:
+        abort(400, description="week is required")
+
+    leagues = db.execute(
+        """
+        SELECT l.league_id, l.name AS league_name, t.team_name
+        FROM leagues l
+        JOIN teams t ON t.league_id = l.league_id AND t.is_mine = 1
+        WHERE l.active = 1
+        ORDER BY l.name
+        """
+    ).fetchall()
+
+    results = []
+    for league in leagues:
+        starters = _compute_starters_for_league(db, league["league_id"], season, week)
+        if starters is None:
+            continue
+        results.append(
+            {
+                "league_id": league["league_id"],
+                "league_name": league["league_name"],
+                "team_name": league["team_name"],
+                **starters,
+            }
+        )
+    return jsonify(results)
 
 
 def _fetch_opponent(db, league_id, season, week, my_team_id):

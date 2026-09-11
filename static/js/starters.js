@@ -13,42 +13,70 @@ const SLOT_ORDER = ["QB", "RB", "WR", "TE", "FLEX", "SUPER_FLEX", "DST", "K"];
 const FLEX_ELIGIBLE = new Set(["RB", "WR", "TE"]);
 const SUPERFLEX_ELIGIBLE = new Set(["QB", "RB", "WR", "TE"]);
 
+// Shows every one of Keith's teams across all active leagues at once (see
+// GET /api/starters_all) rather than gating behind the league selector —
+// mirrors the Draft tool's Rosters tab and W-L's Games tab: one card per
+// entity, horizontally scrollable, same surface-on-bg card background.
 export async function renderStartersTab(container, state) {
-  const data = await api.getInSeason(state.leagueId, "starters", state.season, state.week);
+  const leagueStarters = await api.getStartersAll(state.season, state.week);
 
   const wrap = el("div", "in-season-view");
 
   const heading = document.createElement("h3");
-  heading.textContent = "Optimal Starting Lineup";
+  heading.textContent = "Optimal Starting Lineups";
   wrap.appendChild(heading);
 
+  if (leagueStarters.length === 0) {
+    const empty = el("span", "in-season-empty");
+    empty.textContent = "No leagues with a team marked as yours yet — set it in League Settings.";
+    wrap.appendChild(empty);
+    container.appendChild(wrap);
+    return;
+  }
+
+  const scrollWrap = el("div", "starters-all-scroll");
+  for (const league of leagueStarters) {
+    scrollWrap.appendChild(buildLeagueCard(league));
+  }
+  wrap.appendChild(scrollWrap);
+
+  container.appendChild(wrap);
+}
+
+function buildLeagueCard(league) {
+  const card = el("div", "starters-team-card");
+
+  const heading = document.createElement("h4");
+  heading.textContent = `${league.league_name} — ${league.team_name}`;
+  card.appendChild(heading);
+
   const slotList = el("ol", "starters-slot-list");
-  for (const slot of sortedSlots(data.slots)) {
+  for (const slot of sortedSlots(league.slots)) {
     slotList.appendChild(buildSlotRow(slot));
   }
-  wrap.appendChild(slotList);
+  card.appendChild(slotList);
 
-  if (data.bench.length > 0) {
+  if (league.bench.length > 0) {
     // Only show a FLEX/SUPER_FLEX rank badge if this league actually has that
     // slot — the ranks exist in the data regardless, but they're only
     // meaningful to a bench player's path back into the lineup if the slot
     // that would use them actually exists here.
-    const slotNames = new Set(data.slots.map((s) => s.slot_name));
+    const slotNames = new Set(league.slots.map((s) => s.slot_name));
     const hasFlex = slotNames.has("FLEX");
     const hasSuperFlex = slotNames.has("SUPER_FLEX");
 
-    const benchHeading = document.createElement("h4");
+    const benchHeading = document.createElement("h5");
     benchHeading.textContent = "Bench";
-    wrap.appendChild(benchHeading);
+    card.appendChild(benchHeading);
 
     const benchList = el("ul", "starters-bench-list");
-    for (const player of data.bench) {
+    for (const player of league.bench) {
       benchList.appendChild(buildBenchRow(player, hasFlex, hasSuperFlex));
     }
-    wrap.appendChild(benchList);
+    card.appendChild(benchList);
   }
 
-  container.appendChild(wrap);
+  return card;
 }
 
 function sortedSlots(slots) {

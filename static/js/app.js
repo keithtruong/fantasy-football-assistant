@@ -277,6 +277,16 @@ async function refreshNewsSyncStatus() {
 function updateInSeasonControlsVisibility() {
   const showWeekly = state.inSeasonTab === "weekly" || state.inSeasonTab === "starters";
   const showRos = state.inSeasonTab === "ros";
+  const isStarters = state.inSeasonTab === "starters";
+
+  // Starters shows every one of Keith's teams across all leagues at once
+  // (see renderStartersTab), not just the currently-selected one, so the
+  // league selector and the "refresh this league" control have nothing to
+  // scope to here.
+  leagueSelectRow.style.display = isStarters ? "none" : "";
+  refreshLeagueButton.style.display = isStarters ? "none" : "";
+  refreshLeagueStatus.style.display = isStarters ? "none" : "";
+
   refreshWeeklyRankingsButton.style.display = showWeekly ? "" : "none";
   weeklyRankingsSyncStatus.style.display = showWeekly ? "" : "none";
   refreshRosRankingsButton.style.display = showRos ? "" : "none";

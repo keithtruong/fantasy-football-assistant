@@ -42,7 +42,7 @@ def create_app() -> Flask:
 
     from ffassistant.api.draft_picks import draft_picks_bp
     from ffassistant.api.exposure import exposure_bp
-    from ffassistant.api.in_season import in_season_bp
+    from ffassistant.api.in_season import in_season_bp, starters_all_bp
     from ffassistant.api.leagues import leagues_bp
     from ffassistant.api.news import news_bp
     from ffassistant.api.players import players_bp
@@ -60,6 +60,7 @@ def create_app() -> Flask:
     app.register_blueprint(post_draft_bp)
     app.register_blueprint(players_bp)
     app.register_blueprint(in_season_bp)
+    app.register_blueprint(starters_all_bp)
     app.register_blueprint(news_bp)
     app.register_blueprint(refresh_bp)
     app.register_blueprint(exposure_bp)
