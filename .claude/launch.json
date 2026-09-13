@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ffassistant",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "scripts.run_app"],
+      "port": 5050
+    }
+  ]
+}

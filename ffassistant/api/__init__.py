@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Flask, g, jsonify
 from werkzeug.exceptions import HTTPException
 
-from ffassistant.db import get_connection
+from ffassistant.db import SCHEMA_PATH, _migrate, get_connection
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 
@@ -21,7 +21,26 @@ def get_db():
     return g.db
 
 
+def _apply_pending_migrations() -> None:
+    # Applies any pending schema.sql / _migrate() changes to the db file —
+    # without this, a schema change only takes effect once someone remembers to
+    # run scripts/init_db.py by hand, and every route fails with a missing-column
+    # error until then (see the points_for teams-table incident). Goes through
+    # this module's own get_connection (rather than db.init_db(), which always
+    # targets the default DB_PATH) so tests that patch get_connection to an
+    # isolated db still migrate that db, not the real one.
+    conn = get_connection()
+    try:
+        conn.executescript(SCHEMA_PATH.read_text())
+        _migrate(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def create_app() -> Flask:
+    _apply_pending_migrations()
+
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="")
 
     @app.teardown_appcontext
