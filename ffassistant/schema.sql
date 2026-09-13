@@ -51,8 +51,13 @@ CREATE TABLE IF NOT EXISTS roster_slots (
 -- platform sync (overwritten on every resync); `display_name` is Keith's
 -- own override (e.g. the owner's actual name) and is never touched by
 -- sync — NULL means "just use team_name". `waiver_priority`/`wins`/`losses`/
--- `ties` are also platform-owned (refreshed on every resync) — NULL means
--- "not synced since this column existed", not "no waiver system"/"0-0".
+-- `ties`/`points_for`/`points_against`/`playoff_pct`/`standing` are also
+-- platform-owned (refreshed on every resync) — NULL means "not synced since
+-- this column existed", not "no waiver system"/"0-0"/"0%". `playoff_pct` is
+-- ESPN's own simulation-based playoff-odds percentage and `standing` is
+-- ESPN's current tiebreak-resolved playoff seed — both drive the recap's
+-- Next Week Preview "playoff bubble"/"close in the standings" tags, rather
+-- than this project re-deriving a playoff cutoff and tiebreakers itself.
 CREATE TABLE IF NOT EXISTS teams (
     team_id             INTEGER PRIMARY KEY,
     league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
@@ -65,6 +70,10 @@ CREATE TABLE IF NOT EXISTS teams (
     wins                INTEGER,
     losses              INTEGER,
     ties                INTEGER,
+    points_for          REAL,
+    points_against      REAL,
+    playoff_pct         REAL,
+    standing            INTEGER,
     UNIQUE (league_id, platform_team_id)
 );
 
@@ -140,6 +149,80 @@ CREATE TABLE IF NOT EXISTS weekly_matchups (
     team_id             INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
     opponent_team_id    INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
     PRIMARY KEY (league_id, season, week, team_id)
+);
+
+-- One row per rostered player per team per week: the fantasy points they
+-- scored and the actual lineup slot the owner started them in that week
+-- ('QB','RB','WR','TE','FLEX','SUPER_FLEX','DST','K','BENCH','IR', etc. —
+-- whatever roster_slots uses for that league, same vocabulary). This is the
+-- foundational data the weekly recap reads from: a team's weekly score is
+-- SUM(points) WHERE slot_name NOT IN ('BENCH', 'IR'); per-player "top
+-- performers" and start/sit-gaffe comparisons read straight off this table;
+-- optimal-lineup analysis reruns ffassistant.starters against these same
+-- players' points and compares to what was actually started. Full-replace
+-- per (league_id, season, week) on each sync, same convention as
+-- weekly_matchups above — a box score is only meaningful once that week's
+-- games are final, so this is synced on demand for a specific past week,
+-- not on every roster refresh.
+CREATE TABLE IF NOT EXISTS weekly_box_scores (
+    box_score_id    INTEGER PRIMARY KEY,
+    league_id       INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
+    season          INTEGER NOT NULL,
+    week            INTEGER NOT NULL,
+    team_id         INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
+    player_id       INTEGER NOT NULL REFERENCES players (player_id) ON DELETE CASCADE,
+    slot_name       TEXT NOT NULL,
+    points          REAL NOT NULL,
+    -- ISO timestamp of this player's NFL game kickoff that week (from ESPN's
+    -- own per-week schedule data) and ESPN's pre-game projection for that
+    -- week — both nullable since neither existed before this feature and a
+    -- bye-week entry has no game_date at all. Together they let the recap
+    -- reconstruct a retroactive "score at each checkpoint" (Thu night, Sunday
+    -- windows, etc.) and flag over/under-projection performances, without
+    -- needing to poll live during the week.
+    game_date       TEXT,
+    projected_points REAL,
+    fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (league_id, season, week, team_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_box_scores_lookup ON weekly_box_scores (league_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_weekly_box_scores_team ON weekly_box_scores (team_id);
+
+-- One week's actual fantasy points for players nobody in the league rosters
+-- (the "waiver wire" pool) — feeds the weekly recap's Waiver Wire Watch.
+-- No team_id/slot_name (these players aren't on anyone's roster); a
+-- full-replace sync per (league_id, season, week), same convention as
+-- weekly_box_scores. See ffassistant.connectors.espn.get_free_agent_scores.
+CREATE TABLE IF NOT EXISTS weekly_free_agent_scores (
+    free_agent_score_id INTEGER PRIMARY KEY,
+    league_id       INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
+    season          INTEGER NOT NULL,
+    week            INTEGER NOT NULL,
+    player_id       INTEGER NOT NULL REFERENCES players (player_id) ON DELETE CASCADE,
+    points          REAL NOT NULL,
+    fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (league_id, season, week, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_free_agent_scores_lookup ON weekly_free_agent_scores (league_id, season, week);
+
+-- Owner-level personalization for the weekly recap: the name actually safe
+-- to publish (some owners don't want their platform-configured display_name
+-- used — see John/"JFN" below), plus location/relationship/flavor notes for
+-- the Next Week Preview ("brother vs brother", "same city") and general
+-- commentary. One row per team, all fields optional except display_nickname
+-- (the one thing every recap render needs). sibling_team_id is a
+-- self-reference for family pairs; ON DELETE SET NULL rather than CASCADE so
+-- deleting one sibling's team doesn't cascade-delete the other's row.
+CREATE TABLE IF NOT EXISTS owners (
+    team_id             INTEGER PRIMARY KEY REFERENCES teams (team_id) ON DELETE CASCADE,
+    real_name           TEXT,
+    display_nickname    TEXT NOT NULL,
+    other_nicknames     TEXT,
+    location            TEXT,
+    notes               TEXT,
+    sibling_team_id     INTEGER REFERENCES teams (team_id) ON DELETE SET NULL
 );
 
 -- Player news headlines, extracted and matched from NBC Sports' "Rotoworld"

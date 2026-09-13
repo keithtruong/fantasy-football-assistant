@@ -50,6 +50,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE teams ADD COLUMN losses INTEGER")
     if "ties" not in teams_columns:
         conn.execute("ALTER TABLE teams ADD COLUMN ties INTEGER")
+    if "points_for" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN points_for REAL")
+    if "points_against" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN points_against REAL")
+    if "playoff_pct" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN playoff_pct REAL")
+    if "standing" not in teams_columns:
+        conn.execute("ALTER TABLE teams ADD COLUMN standing INTEGER")
 
     player_news_columns = {row["name"] for row in conn.execute("PRAGMA table_info(player_news)")}
     if "analysis" not in player_news_columns:
@@ -62,6 +70,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     rankings_columns = {row["name"] for row in conn.execute("PRAGMA table_info(rankings)")}
     if "list_type" not in rankings_columns:
         conn.execute("ALTER TABLE rankings ADD COLUMN list_type TEXT")
+
+    weekly_box_scores_columns = {row["name"] for row in conn.execute("PRAGMA table_info(weekly_box_scores)")}
+    if "game_date" not in weekly_box_scores_columns:
+        conn.execute("ALTER TABLE weekly_box_scores ADD COLUMN game_date TEXT")
+    if "projected_points" not in weekly_box_scores_columns:
+        conn.execute("ALTER TABLE weekly_box_scores ADD COLUMN projected_points REAL")
 
     _migrate_leagues_platform_check(conn)
 

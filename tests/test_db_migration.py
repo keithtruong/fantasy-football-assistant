@@ -102,6 +102,72 @@ class LeaguesPlatformMigrationTestCase(unittest.TestCase):
         )
         conn.close()
 
+    def test_init_db_adds_standings_metadata_columns(self):
+        self._seed_old_schema()
+        init_db(self.db_path)
+
+        conn = get_connection(self.db_path)
+        # Pre-existing team row survived, and the new columns are present
+        # (NULL until the next resync populates them).
+        team = conn.execute("SELECT * FROM teams WHERE team_id = 1").fetchone()
+        self.assertEqual(team["team_name"], "Team A")
+        self.assertIsNone(team["points_for"])
+        self.assertIsNone(team["points_against"])
+        self.assertIsNone(team["playoff_pct"])
+        self.assertIsNone(team["standing"])
+
+        conn.execute(
+            "UPDATE teams SET points_for = 950.5, points_against = 800.0, playoff_pct = 92.0, standing = 1 "
+            "WHERE team_id = 1"
+        )
+        conn.commit()
+        updated = conn.execute("SELECT * FROM teams WHERE team_id = 1").fetchone()
+        self.assertEqual(updated["playoff_pct"], 92.0)
+        self.assertEqual(updated["standing"], 1)
+        conn.close()
+
+    def test_init_db_adds_game_date_and_projected_points_columns(self):
+        self._seed_old_schema()
+        conn = sqlite3.connect(self.db_path)
+        # weekly_box_scores' pre-this-feature shape (no game_date/projected_points).
+        conn.executescript(
+            """
+            CREATE TABLE players (player_id INTEGER PRIMARY KEY, full_name TEXT NOT NULL, position TEXT NOT NULL);
+            CREATE TABLE weekly_box_scores (
+                box_score_id INTEGER PRIMARY KEY,
+                league_id INTEGER NOT NULL,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                team_id INTEGER NOT NULL,
+                player_id INTEGER NOT NULL,
+                slot_name TEXT NOT NULL,
+                points REAL NOT NULL,
+                fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        conn.execute("INSERT INTO players (player_id, full_name, position) VALUES (1, 'Old Player', 'RB')")
+        conn.execute(
+            "INSERT INTO weekly_box_scores (league_id, season, week, team_id, player_id, slot_name, points) "
+            "VALUES (1, 2025, 1, 1, 1, 'RB', 10.0)"
+        )
+        conn.commit()
+        conn.close()
+
+        init_db(self.db_path)
+
+        conn = get_connection(self.db_path)
+        row = conn.execute("SELECT * FROM weekly_box_scores WHERE box_score_id = 1").fetchone()
+        self.assertEqual(row["points"], 10.0)  # pre-existing row survived
+        self.assertIsNone(row["game_date"])  # new column present, NULL until a resync populates it
+        self.assertIsNone(row["projected_points"])
+
+        conn.execute("UPDATE weekly_box_scores SET game_date = '2025-09-07T13:00:00', projected_points = 12.5 WHERE box_score_id = 1")
+        conn.commit()
+        updated = conn.execute("SELECT * FROM weekly_box_scores WHERE box_score_id = 1").fetchone()
+        self.assertEqual(updated["projected_points"], 12.5)
+        conn.close()
+
     def test_init_db_is_idempotent(self):
         self._seed_old_schema()
         init_db(self.db_path)
