@@ -11,15 +11,17 @@ def sync_news():
 
     Re-ingests whatever a scheduled Cowork task last dropped (see
     ffassistant.ingest.news.sync_player_news_from_file) rather than calling
-    the Anthropic API directly — that avoids a metered cost on every click,
-    but means this button reflects Cowork's last run, not a fresh extraction.
+    the Anthropic API directly — extraction AND digest synthesis both read
+    from files a Cowork task drops on its own schedule, so this never calls
+    the metered API, but means this button reflects Cowork's last run(s), not
+    a fresh extraction/digest.
     """
     db = get_db()
 
     from ffassistant.ingest.news import sync_player_news_from_file
 
     try:
-        sync_player_news_from_file(db)
+        stats = sync_player_news_from_file(db)
     except Exception as e:
         abort(502, description=f"Player news sync failed: {e}")
 
@@ -29,7 +31,16 @@ def sync_news():
     headline_count = db.execute("SELECT COUNT(*) AS c FROM player_news").fetchone()["c"]
 
     return jsonify(
-        {"player_count": player_count, "headline_count": headline_count, "synced_at": _last_synced_at(db)}
+        {
+            "player_count": player_count,
+            "headline_count": headline_count,
+            "synced_at": _last_synced_at(db),
+            # Nonzero here usually means a Rotoworld-pull Cowork trigger's
+            # prompt stopped extracting the permalink, not that there was no
+            # news — see ffassistant.refresh.refresh_news for the same signal
+            # surfaced in the scheduled refresh log.
+            "skipped_no_link": stats["skipped_no_link"],
+        }
     )
 
 

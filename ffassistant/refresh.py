@@ -87,11 +87,23 @@ def refresh_news(conn):
     """Reads Rotoworld items from the file a scheduled Cowork task drops
     (see ffassistant.ingest.news) rather than calling the Anthropic API
     directly — a missing/stale file fails clearly here instead of silently
-    falling back to the paid path."""
+    falling back to the paid path.
+
+    A nonzero skipped_no_link count is flagged in the detail message rather
+    than just being absorbed into a lower "headlines matched" number — items
+    missing a link are silently dropped (no stable identity to dedupe on),
+    and a run where that count is high/total usually means a Rotoworld-pull
+    Cowork trigger's prompt stopped extracting the permalink, not that there
+    was just no news that day. Surfacing it here means a broken trigger shows
+    up in data/refresh_log.txt instead of only being noticed by chance.
+    """
     try:
-        sync_player_news_from_file(conn)
+        stats = sync_player_news_from_file(conn)
         count = conn.execute("SELECT COUNT(*) AS c FROM player_news").fetchone()["c"]
-        return True, f"{count} headlines matched", None
+        detail = f"{count} headlines matched"
+        if stats["skipped_no_link"]:
+            detail += f" ({stats['skipped_no_link']} items dropped for missing link — check the Cowork extraction trigger's prompt)"
+        return True, detail, None
     except Exception as e:
         return False, None, str(e)
 

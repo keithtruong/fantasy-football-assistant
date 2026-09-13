@@ -22,6 +22,10 @@ _load_dotenv(REPO_ROOT / ".env")
 ESPN_SWID = os.environ.get("ESPN_SWID")
 ESPN_S2 = os.environ.get("ESPN_S2")
 
+# GroupMe Bot ID (from dev.groupme.com — a bot is scoped to one group, so
+# this alone is enough to post; see ffassistant/connectors/groupme.py).
+GROUPME_BOT_ID = os.environ.get("GROUPME_BOT_ID")
+
 # yahoo_oauth reads/rewrites this file directly (it stores refreshed tokens back to it).
 YAHOO_OAUTH_PATH = REPO_ROOT / ".yahoo_oauth.json"
 
@@ -50,3 +54,12 @@ DB_PATH = REPO_ROOT / "data" / "ffassistant.db"
 # see ffassistant.ingest.news.sync_player_news_from_file. Matches the existing
 # "data/*.json" gitignore pattern for regenerable cached platform data.
 ROTOWORLD_NEWS_IMPORT_PATH = REPO_ROOT / "data" / "rotoworld_news.json"
+
+# Written by this project after every file-based news sync (rostered players +
+# their matched news items) for a second scheduled Cowork task to pick up —
+# and PLAYER_DIGESTS_IMPORT_PATH is where that task drops the digests it wrote
+# from that request. Moves digest synthesis, like extraction above, onto
+# Cowork's own Claude access instead of a metered Anthropic API call from this
+# codebase. See ffassistant.ingest.news._digests_from_cowork_export.
+PLAYER_DIGEST_REQUEST_PATH = REPO_ROOT / "data" / "player_digest_request.json"
+PLAYER_DIGESTS_IMPORT_PATH = REPO_ROOT / "data" / "player_digests.json"
