@@ -42,3 +42,13 @@ data/*.json
 # Logs
 *.log
 data/refresh_log.txt
+
+# Weekly recap workflow: in-progress narrative briefs/stubs and rendered
+# output (regenerable each week — see scripts/prepare_weekly_recap.py and
+# scripts/render_weekly_recap.py)
+data/recap_drafts/
+data/recaps/
+
+# Claude Code local settings (machine-specific tool permissions) — .claude/launch.json
+# is the shareable piece and stays tracked.
+.claude/settings.local.json
