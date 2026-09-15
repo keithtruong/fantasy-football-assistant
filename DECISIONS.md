@@ -6,6 +6,28 @@ Newest entries at the top.
 
 ---
 
+## 2026-09-15 — ESPN syncs run on native Windows Task Scheduler, not through a Claude session
+
+**Context:** Following the GroupMe Capabilities fix below, tried the same approach for ESPN — Keith added `lm-api-reads.fantasy.espn.com` and `site.api.espn.com` to the same Claude Capabilities allowlist and restarted. Network access was confirmed genuinely open (a direct call returned a real ESPN API response — a proper JSON 404 for a bad path — not a proxy block, distinguishing it from the earlier connection-refused failures), and a real `sync_box_scores` call for TAMS week 1 got far enough to pull actual player data back from ESPN.
+
+**But that same test run hit a second, unrelated problem:** partway through writing the synced data, SQLite raised a "disk I/O error" and left a stuck `data/ffassistant.db-journal` file that blocked all DB access (even reads) through the device link — consistent with the connected folder's network mount not fully supporting the file-locking SQLite needs mid-write, the same class of issue already noted here for git's `.git/index.lock`. Recovery: opening the database file *natively* (Keith running `scripts/check_db_health.py`/`.bat` directly on his machine, not through the Claude folder link) let SQLite auto-roll-back the stuck journal on its own — confirming the mount was the problem, not real corruption. Verified afterward: `PRAGMA integrity_check` returns `ok`, the journal file is gone, and week 1's box scores are complete across all 12 teams (no data lost from the interrupted run — most of it had already landed via earlier interim commits inside `resolve_or_create_player`).
+
+**Conclusion — a live Claude session isn't actually the right way to run ESPN syncs, even now that the network path works:** the device-link mount's write reliability is the real limiter, not ESPN network access. The existing scripts (`sync_week_results.py`, `refresh_in_season.py`) already say they're meant to run via a **native Windows Scheduled Task** on Keith's own machine — completely outside any Claude session or the device-bridge mount, so neither the network-egress allowlist nor the mount's locking behavior ever come into play. Keith has now registered that Scheduled Task, so ESPN syncs run unattended and natively going forward. The Capabilities/network fix above turned out to matter for GroupMe (which only ever needs to fire from a live session, since posting the recap link is a one-off action after rendering) but not for ESPN's recurring sync, which shouldn't route through a Claude session at all.
+
+**Practical effect:** don't reach for `device_bash` to run `sync_box_scores`/`sync_weekly_matchups`/etc. against the real, in-use database going forward — that's what caused the stuck journal here. Those belong on the native Scheduled Task. `device_bash` is still fine for read-only queries and for driving `scripts.render_weekly_recap`/`scripts.prepare_weekly_recap` (the recap-building half of the workflow, which reads already-synced data rather than writing large new batches).
+
+---
+
+## 2026-09-15 — GroupMe recap distribution unblocked via Capabilities
+
+**Context:** Wanted to close the loop on `render_weekly_recap.py --post-groupme` (already built — posts a message via a GroupMe Bot, see `ffassistant/connectors/groupme.py`) by actually firing it. It failed from both this cloud session and the linked device's shell with the same error: a 403 at the network proxy layer for `api.groupme.com`, not a GroupMe API error — i.e. blocked before the request ever left the sandbox. This is the same shape of restriction already known for ESPN (see `smart_current_week`/sync notes — ESPN syncs have to run on Keith's own native machine, outside any Claude sandbox, for the same reason).
+
+**Resolved:** Keith enabled broader network access in the Claude desktop app's Admin settings → Capabilities, then restarted the app — the restart was necessary for the new policy to actually take effect (the first retry immediately after the Capabilities change still failed; a clean quit-and-reopen fixed it). After that, `post_message()` succeeded from the device's shell on the first try.
+
+**Practical effect:** `--post-groupme` can now run directly from a live session (this one or a future one) via the device link, no manual copy-paste needed for GroupMe distribution — the workflow described in `scripts/render_weekly_recap.py`'s docstring is now fully live for the GroupMe half. ESPN wasn't retested against the same Capabilities change (different host, not attempted) — treat that restriction as still in force until it's specifically verified otherwise.
+
+---
+
 ## 2026-09-15 — Matchup Stories tab-highlight bug, plus recap-wide styling pass
 
 **Bug:** Keith reported that the Matchup Stories tab buttons highlighted wrong — the first tab (Helmuth vs. Patel) was orange on load, but clicking any other tab cleared all highlighting, and clicking the *last* tab (Cissy vs. Walters) lit up the *first* tab instead.
