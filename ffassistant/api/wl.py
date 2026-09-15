@@ -3,6 +3,7 @@ import datetime
 from flask import Blueprint, abort, jsonify, request
 
 from ffassistant.api import get_db
+from ffassistant.wl import upsert_guillotine_week, upsert_matchup
 
 wl_bp = Blueprint("wl", __name__, url_prefix="/api/wl")
 
@@ -36,61 +37,108 @@ def get_games():
 
     leagues = db.execute(
         """
-        SELECT DISTINCT lh.league_history_id, lh.name
+        SELECT DISTINCT lh.league_history_id, lh.name, lh.format
         FROM league_history lh
         LEFT JOIN matchups m ON m.league_history_id = lh.league_history_id AND m.season = ?
+        LEFT JOIN guillotine_weeks gw ON gw.league_history_id = lh.league_history_id AND gw.season = ?
         LEFT JOIN league_seasons ls ON ls.league_history_id = lh.league_history_id AND ls.season = ?
-        WHERE lh.active = 1 OR m.matchup_id IS NOT NULL OR ls.league_season_id IS NOT NULL
+        WHERE lh.active = 1 OR m.matchup_id IS NOT NULL OR gw.guillotine_week_id IS NOT NULL
+            OR ls.league_season_id IS NOT NULL
         ORDER BY lh.name
         """,
-        (year, year),
+        (year, year, year),
     ).fetchall()
 
     result = []
     for league in leagues:
-        week_rows = db.execute(
-            """
-            SELECT week, outcome, points_for, points_against, playoff_round
-            FROM matchups WHERE league_history_id = ? AND season = ?
-            """,
-            (league["league_history_id"], year),
-        ).fetchall()
-        by_week = {r["week"]: dict(r) for r in week_rows}
-
-        weeks = []
-        for wk in range(1, MAX_WEEK + 1):
-            row = by_week.get(wk)
-            if row is None:
-                weeks.append(
-                    {"week": wk, "outcome": None, "points_for": None, "points_against": None,
-                     "differential": None, "playoff_round": None}
-                )
-            else:
-                weeks.append({**row, "differential": row["points_for"] - row["points_against"]})
-
-        totals = db.execute(
-            """
-            SELECT
-                COALESCE(SUM(CASE WHEN outcome = 'W' THEN 1 ELSE 0 END), 0) AS wins,
-                COALESCE(SUM(CASE WHEN outcome = 'L' THEN 1 ELSE 0 END), 0) AS losses,
-                COALESCE(SUM(CASE WHEN outcome = 'T' THEN 1 ELSE 0 END), 0) AS ties,
-                COALESCE(SUM(points_for), 0) AS points_for,
-                COALESCE(SUM(points_against), 0) AS points_against
-            FROM matchups WHERE league_history_id = ? AND season = ?
-            """,
-            (league["league_history_id"], year),
-        ).fetchone()
-
-        result.append(
-            {
-                "league_history_id": league["league_history_id"],
-                "name": league["name"],
-                "weeks": weeks,
-                "totals": dict(totals),
-            }
-        )
+        if league["format"] == "guillotine":
+            result.append(_build_guillotine_game_card(db, league, year))
+        else:
+            result.append(_build_head_to_head_game_card(db, league, year))
 
     return jsonify(result)
+
+
+def _build_head_to_head_game_card(db, league, year):
+    week_rows = db.execute(
+        """
+        SELECT week, outcome, points_for, points_against, playoff_round
+        FROM matchups WHERE league_history_id = ? AND season = ?
+        """,
+        (league["league_history_id"], year),
+    ).fetchall()
+    by_week = {r["week"]: dict(r) for r in week_rows}
+
+    weeks = []
+    for wk in range(1, MAX_WEEK + 1):
+        row = by_week.get(wk)
+        if row is None:
+            weeks.append(
+                {"week": wk, "outcome": None, "points_for": None, "points_against": None,
+                 "differential": None, "playoff_round": None}
+            )
+        else:
+            weeks.append({**row, "differential": row["points_for"] - row["points_against"]})
+
+    totals = db.execute(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN outcome = 'W' THEN 1 ELSE 0 END), 0) AS wins,
+            COALESCE(SUM(CASE WHEN outcome = 'L' THEN 1 ELSE 0 END), 0) AS losses,
+            COALESCE(SUM(CASE WHEN outcome = 'T' THEN 1 ELSE 0 END), 0) AS ties,
+            COALESCE(SUM(points_for), 0) AS points_for,
+            COALESCE(SUM(points_against), 0) AS points_against
+        FROM matchups WHERE league_history_id = ? AND season = ?
+        """,
+        (league["league_history_id"], year),
+    ).fetchone()
+
+    return {
+        "league_history_id": league["league_history_id"],
+        "name": league["name"],
+        "format": "head_to_head",
+        "weeks": weeks,
+        "totals": dict(totals),
+    }
+
+
+def _build_guillotine_game_card(db, league, year):
+    """Guillotine's weekly shape (rank/remaining/eliminated score) has no W/L
+    to sum, so `totals` reports the season's last recorded standing instead of
+    an aggregate -- see ffassistant.schema's guillotine_weeks comment."""
+    week_rows = db.execute(
+        """
+        SELECT week, points_for, eliminated_points, rank, remaining_count
+        FROM guillotine_weeks WHERE league_history_id = ? AND season = ?
+        """,
+        (league["league_history_id"], year),
+    ).fetchall()
+    by_week = {r["week"]: dict(r) for r in week_rows}
+
+    weeks = []
+    for wk in range(1, MAX_WEEK + 1):
+        row = by_week.get(wk)
+        if row is None:
+            weeks.append(
+                {"week": wk, "points_for": None, "eliminated_points": None, "rank": None, "remaining_count": None}
+            )
+        else:
+            weeks.append(row)
+
+    weeks_played = [w for w in weeks if w["rank"] is not None]
+    last_week = weeks_played[-1] if weeks_played else None
+
+    return {
+        "league_history_id": league["league_history_id"],
+        "name": league["name"],
+        "format": "guillotine",
+        "weeks": weeks,
+        "totals": {
+            "weeks_played": len(weeks_played),
+            "final_rank": last_week["rank"] if last_week else None,
+            "final_remaining_count": last_week["remaining_count"] if last_week else None,
+        },
+    }
 
 
 @wl_bp.get("/weekly")
@@ -314,35 +362,39 @@ def put_matchup():
     if playoff_round is not None and playoff_round not in PLAYOFF_ROUNDS:
         abort(400, description=f"playoff_round must be one of {PLAYOFF_ROUNDS} or null")
 
-    if points_for > points_against:
-        outcome = "W"
-    elif points_for < points_against:
-        outcome = "L"
-    else:
-        outcome = "T"
+    row = upsert_matchup(db, league_history_id, season, week, points_for, points_against, playoff_round)
+    return jsonify(row)
 
-    db.execute(
-        """
-        INSERT INTO matchups (league_history_id, season, week, points_for, points_against, outcome, playoff_round)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (league_history_id, season, week) DO UPDATE SET
-            points_for = excluded.points_for,
-            points_against = excluded.points_against,
-            outcome = excluded.outcome,
-            playoff_round = excluded.playoff_round
-        """,
-        (league_history_id, season, week, points_for, points_against, outcome, playoff_round),
-    )
-    db.commit()
 
-    return jsonify(
-        {
-            "league_history_id": league_history_id,
-            "season": season,
-            "week": week,
-            "points_for": points_for,
-            "points_against": points_against,
-            "outcome": outcome,
-            "playoff_round": playoff_round,
-        }
-    )
+@wl_bp.put("/guillotine_weeks")
+def put_guillotine_week():
+    """Manual entry/edit for a single Guillotine week -- no platform autofill
+    exists for this yet (see ffassistant.wl.autofill_from_platform_sync's
+    "no_traditional_record" skip), so this is the only way these rows get
+    filled in today."""
+    db = get_db()
+    body = request.get_json(force=True)
+
+    league_history_id = body.get("league_history_id")
+    season = body.get("season")
+    week = body.get("week")
+    points_for = body.get("points_for")
+    eliminated_points = body.get("eliminated_points")
+    rank = body.get("rank")
+    remaining_count = body.get("remaining_count")
+
+    if (
+        not league_history_id or not season or not week
+        or points_for is None or eliminated_points is None
+        or rank is None or remaining_count is None
+    ):
+        abort(
+            400,
+            description="league_history_id, season, week, points_for, eliminated_points, rank, "
+            "and remaining_count are required",
+        )
+    if rank < 1 or remaining_count < 1 or rank > remaining_count:
+        abort(400, description="rank must be between 1 and remaining_count")
+
+    row = upsert_guillotine_week(db, league_history_id, season, week, points_for, eliminated_points, rank, remaining_count)
+    return jsonify(row)

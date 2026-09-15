@@ -52,6 +52,15 @@ function buildLeagueGameCard(league, year, refresh) {
   heading.textContent = league.name;
   card.appendChild(heading);
 
+  card.appendChild(
+    league.format === "guillotine"
+      ? buildGuillotineTable(league, year, refresh)
+      : buildHeadToHeadTable(league, year, refresh)
+  );
+  return card;
+}
+
+function buildHeadToHeadTable(league, year, refresh) {
   const table = el("table", "wl-games-table");
   const thead = document.createElement("thead");
   thead.innerHTML = "<tr><th>Wk</th><th>Outcome</th><th>PF</th><th>PA</th><th>Diff</th><th>Playoffs</th></tr>";
@@ -73,8 +82,118 @@ function buildLeagueGameCard(league, year, refresh) {
   tfoot.appendChild(totalRow);
   table.appendChild(tfoot);
 
-  card.appendChild(table);
-  return card;
+  return table;
+}
+
+// ---- Guillotine: survivor-elimination leagues have no opponent/outcome, so
+// they get their own columns (rank-of-remaining, eliminated score) rather
+// than reusing the head-to-head table's Outcome/PA meaning. ----
+
+function buildGuillotineTable(league, year, refresh) {
+  const table = el("table", "wl-games-table");
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Wk</th><th>Rank</th><th>PF</th><th>Eliminated</th></tr>";
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const weekData of league.weeks) {
+    tbody.appendChild(buildGuillotineWeekRow(league.league_history_id, weekData, year, refresh));
+  }
+  table.appendChild(tbody);
+
+  const tfoot = document.createElement("tfoot");
+  const totals = league.totals;
+  const finalCell = totals.final_rank != null ? `${totals.final_rank} of ${totals.final_remaining_count}` : "—";
+  const totalRow = document.createElement("tr");
+  totalRow.innerHTML = `<td>Final</td><td>${finalCell}</td><td colspan="2">${totals.weeks_played} wk(s) played</td>`;
+  tfoot.appendChild(totalRow);
+  table.appendChild(tfoot);
+
+  return table;
+}
+
+function buildGuillotineWeekRow(leagueHistoryId, weekData, year, refresh) {
+  const row = document.createElement("tr");
+  if (weekData.rank == null) row.classList.add("wl-week-empty");
+
+  renderGuillotineWeekRowContent(row, weekData);
+
+  row.addEventListener("click", () => {
+    if (row.querySelector(".wl-edit-form")) return;
+    openGuillotineWeekEditForm(row, leagueHistoryId, weekData, year, refresh);
+  });
+
+  return row;
+}
+
+function renderGuillotineWeekRowContent(row, weekData) {
+  row.innerHTML = "";
+  row.append(
+    td(weekData.week),
+    td(weekData.rank != null ? `${weekData.rank} of ${weekData.remaining_count}` : "—"),
+    td(weekData.points_for != null ? weekData.points_for.toFixed(1) : "—"),
+    td(weekData.eliminated_points != null ? weekData.eliminated_points.toFixed(1) : "—")
+  );
+}
+
+function openGuillotineWeekEditForm(row, leagueHistoryId, weekData, year, refresh) {
+  row.innerHTML = "";
+  const cell = document.createElement("td");
+  cell.colSpan = 4;
+  cell.className = "wl-edit-form";
+
+  const pfInput = document.createElement("input");
+  pfInput.type = "number";
+  pfInput.step = "0.01";
+  pfInput.placeholder = "PF";
+  pfInput.value = weekData.points_for ?? "";
+
+  const eliminatedInput = document.createElement("input");
+  eliminatedInput.type = "number";
+  eliminatedInput.step = "0.01";
+  eliminatedInput.placeholder = "Eliminated score";
+  eliminatedInput.value = weekData.eliminated_points ?? "";
+
+  const rankInput = document.createElement("input");
+  rankInput.type = "number";
+  rankInput.step = "1";
+  rankInput.min = "1";
+  rankInput.placeholder = "Rank";
+  rankInput.value = weekData.rank ?? "";
+
+  const remainingInput = document.createElement("input");
+  remainingInput.type = "number";
+  remainingInput.step = "1";
+  remainingInput.min = "1";
+  remainingInput.placeholder = "Remaining";
+  remainingInput.value = weekData.remaining_count ?? "";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "wl-save-button";
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", async () => {
+    if (
+      pfInput.value === "" || eliminatedInput.value === "" ||
+      rankInput.value === "" || remainingInput.value === ""
+    ) {
+      return;
+    }
+    await api.putWlGuillotineWeek({
+      league_history_id: leagueHistoryId,
+      season: year,
+      week: weekData.week,
+      points_for: Number(pfInput.value),
+      eliminated_points: Number(eliminatedInput.value),
+      rank: Number(rankInput.value),
+      remaining_count: Number(remainingInput.value),
+    });
+    refresh();
+  });
+
+  cell.append(pfInput, eliminatedInput, rankInput, remainingInput, saveBtn);
+  row.appendChild(cell);
+  pfInput.focus();
 }
 
 function buildWeekRow(leagueHistoryId, weekData, year, refresh) {

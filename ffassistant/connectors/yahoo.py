@@ -144,6 +144,30 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
     return teams
 
 
+def get_standings(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
+    """One entry per team: platform_team_id, team_name, points_for -- lighter
+    than get_teams() since it skips the per-team roster fetch (18 Team.roster()
+    calls) when only the standings numbers are needed, e.g.
+    ffassistant.guillotine's weekly cumulative-points-for snapshot.
+
+    points_for here is Yahoo's running season-cumulative total, not a single
+    week's score -- see ffassistant.guillotine's module docstring for why a
+    single week's score has to be derived as a delta against a prior
+    snapshot rather than read directly (Yahoo's own per-week rank_week/
+    points_from_chop fields on this same standings() call are live/current-
+    week-only, confirmed by inspection).
+    """
+    league = _connect(league_id, oauth_path)
+    return [
+        {
+            "platform_team_id": s["team_key"].rsplit(".t.", 1)[-1],
+            "team_name": s["name"],
+            "points_for": float(s["points_for"]),
+        }
+        for s in league.standings()
+    ]
+
+
 def get_matchups(league_id: str, week: int, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
     """This week's opponent pairings, one entry per side: {platform_team_id, opponent_platform_team_id}.
 

@@ -77,6 +77,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "projected_points" not in weekly_box_scores_columns:
         conn.execute("ALTER TABLE weekly_box_scores ADD COLUMN projected_points REAL")
 
+    league_history_columns = {row["name"] for row in conn.execute("PRAGMA table_info(league_history)")}
+    if "format" not in league_history_columns:
+        conn.execute(
+            "ALTER TABLE league_history ADD COLUMN format TEXT NOT NULL DEFAULT 'head_to_head' "
+            "CHECK (format IN ('head_to_head', 'guillotine'))"
+        )
+        # Only guillotine-format league on record today.
+        conn.execute("UPDATE league_history SET format = 'guillotine' WHERE name = 'Guillotine'")
+
     _migrate_leagues_platform_check(conn)
 
 

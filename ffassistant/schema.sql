@@ -207,6 +207,27 @@ CREATE TABLE IF NOT EXISTS weekly_free_agent_scores (
 
 CREATE INDEX IF NOT EXISTS idx_weekly_free_agent_scores_lookup ON weekly_free_agent_scores (league_id, season, week);
 
+-- Weekly snapshot of every team's Yahoo running season-cumulative points_for
+-- in a `format = 'guillotine'` league -- see ffassistant.guillotine, which
+-- derives each week's actual score as the delta between consecutive
+-- snapshots (Yahoo's own per-week rank_week/points_from_chop fields are
+-- live/current-week-only, not retroactively queryable, so this project
+-- tracks its own history instead). Keyed to the live `leagues` table (not
+-- league_history) since it's about every opponent in the platform league,
+-- not just Keith's own W-L history record. Full-replace per
+-- (league_id, season, week), same convention as weekly_box_scores/
+-- weekly_free_agent_scores.
+CREATE TABLE IF NOT EXISTS guillotine_team_snapshots (
+    league_id               INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
+    season                  INTEGER NOT NULL,
+    week                    INTEGER NOT NULL,
+    platform_team_id        TEXT NOT NULL,
+    team_name               TEXT NOT NULL,
+    cumulative_points_for   REAL NOT NULL,
+    fetched_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (league_id, season, week, platform_team_id)
+);
+
 -- Owner-level personalization for the weekly recap: the name actually safe
 -- to publish (some owners don't want their platform-configured display_name
 -- used — see John/"JFN" below), plus location/relationship/flavor notes for
@@ -484,10 +505,17 @@ CREATE INDEX IF NOT EXISTS idx_transactions_league_season ON transactions (leagu
 -- platform league IDs churn, especially Yahoo's). W-L history must survive
 -- that churn, so it never references `leagues`/`teams` at all — same idea as
 -- separating a canonical player identity from churn-prone platform aliases.
+-- `format` picks which weekly-results table/view a league reads:
+-- 'head_to_head' (the default -- opponent-based W/L, see `matchups` below) or
+-- 'guillotine' (survivor-elimination -- see `guillotine_weeks` below). Kept on
+-- league_history rather than the live `leagues` table since it's a property
+-- of the real-world league across years, not of a given season's platform
+-- sync.
 CREATE TABLE IF NOT EXISTS league_history (
     league_history_id   INTEGER PRIMARY KEY,
     name                TEXT NOT NULL UNIQUE,
-    active              INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+    active              INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    format              TEXT NOT NULL DEFAULT 'head_to_head' CHECK (format IN ('head_to_head', 'guillotine'))
 );
 
 -- Per-season league facts: buy-in/payout/finish and W-L record. Year-scoped
@@ -527,3 +555,25 @@ CREATE TABLE IF NOT EXISTS matchups (
 
 CREATE INDEX IF NOT EXISTS idx_matchups_season_week ON matchups (season, week);
 CREATE INDEX IF NOT EXISTS idx_matchups_league_season ON matchups (league_history_id, season);
+
+-- One row per week for a `format = 'guillotine'` league_history entry --
+-- survivor-elimination has no opponent/outcome to record, so it gets its own
+-- shape instead of overloading `matchups` (whose outcome/points_against mean
+-- something different) and its own totals: `rank`/`remaining_count` are "3rd
+-- of 10 left" for that week, `eliminated_points` is the score of whoever got
+-- cut that week (not an opponent's score). Kept out of every Games/Weekly/
+-- Close-games/All-Time aggregate above by simply never being read by them.
+CREATE TABLE IF NOT EXISTS guillotine_weeks (
+    guillotine_week_id  INTEGER PRIMARY KEY,
+    league_history_id   INTEGER NOT NULL REFERENCES league_history (league_history_id) ON DELETE CASCADE,
+    season              INTEGER NOT NULL,
+    week                INTEGER NOT NULL,
+    points_for          REAL NOT NULL,
+    eliminated_points   REAL NOT NULL,
+    rank                INTEGER NOT NULL,
+    remaining_count     INTEGER NOT NULL,
+    UNIQUE (league_history_id, season, week)
+);
+
+CREATE INDEX IF NOT EXISTS idx_guillotine_weeks_season_week ON guillotine_weeks (season, week);
+CREATE INDEX IF NOT EXISTS idx_guillotine_weeks_league_season ON guillotine_weeks (league_history_id, season);

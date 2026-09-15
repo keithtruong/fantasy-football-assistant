@@ -114,6 +114,8 @@ export const api = {
   getWlFinishes: () => request("/api/wl/finishes"),
   putWlMatchup: (payload) =>
     request("/api/wl/matchups", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(payload) }),
+  putWlGuillotineWeek: (payload) =>
+    request("/api/wl/guillotine_weeks", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(payload) }),
   syncRankings: (season, scoringFormat) =>
     request("/api/rankings/sync", {
       method: "POST",

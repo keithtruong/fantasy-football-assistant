@@ -20,6 +20,21 @@ class WlTestCase(ApiTestCase):
     def _seed_wl(self, conn):
         conn.execute("INSERT INTO league_history (league_history_id, name, active) VALUES (1, 'Alpha', 1)")
         conn.execute("INSERT INTO league_history (league_history_id, name, active) VALUES (2, 'Beta', 0)")
+        conn.execute(
+            "INSERT INTO league_history (league_history_id, name, active, format) VALUES (3, 'Gamma', 1, 'guillotine')"
+        )
+
+        # Gamma 2025: two weeks survived, then eliminated -- kept out of every
+        # head-to-head aggregate by living in guillotine_weeks instead of
+        # matchups.
+        conn.execute(
+            "INSERT INTO guillotine_weeks (league_history_id, season, week, points_for, eliminated_points, rank, remaining_count) "
+            "VALUES (3, 2025, 1, 130.0, 90.0, 5, 10)"
+        )
+        conn.execute(
+            "INSERT INTO guillotine_weeks (league_history_id, season, week, points_for, eliminated_points, rank, remaining_count) "
+            "VALUES (3, 2025, 2, 85.0, 85.0, 9, 9)"
+        )
 
         # Alpha 2025: two weeks played, one close game.
         conn.execute(
@@ -51,7 +66,7 @@ class TestLeagueHistoryApi(WlTestCase):
     def test_lists_all_leagues(self):
         resp = self.client.get("/api/wl/league_history")
         names = {r["name"]: r["active"] for r in resp.get_json()}
-        self.assertEqual(names, {"Alpha": 1, "Beta": 0})
+        self.assertEqual(names, {"Alpha": 1, "Beta": 0, "Gamma": 1})
 
 
 class TestGamesApi(WlTestCase):
@@ -84,8 +99,31 @@ class TestGamesApi(WlTestCase):
         self.assertEqual(alpha["totals"]["losses"], 1)
         self.assertEqual(alpha["totals"]["points_for"], 215.0)
 
+    def test_guillotine_league_gets_rank_columns_and_final_standing_totals(self):
+        resp = self.client.get("/api/wl/games?year=2025")
+        gamma = next(g for g in resp.get_json() if g["name"] == "Gamma")
+        self.assertEqual(gamma["format"], "guillotine")
+
+        week1 = next(w for w in gamma["weeks"] if w["week"] == 1)
+        self.assertEqual(week1["rank"], 5)
+        self.assertEqual(week1["remaining_count"], 10)
+        self.assertEqual(week1["eliminated_points"], 90.0)
+        self.assertNotIn("outcome", week1)
+
+        # Final standing reflects the last week played (week 2: eliminated,
+        # 9 of 9), not a summed W/L.
+        self.assertEqual(gamma["totals"], {"weeks_played": 2, "final_rank": 9, "final_remaining_count": 9})
+
 
 class TestWeeklyApi(WlTestCase):
+    def test_guillotine_weeks_excluded_from_cross_league_aggregate(self):
+        # Gamma's rows live in guillotine_weeks, not matchups, so they never
+        # reach this aggregate -- only Alpha (W) and Beta (L) count toward
+        # week 1's net.
+        resp = self.client.get("/api/wl/weekly?year=2025")
+        week1 = next(w for w in resp.get_json() if w["week"] == 1)
+        self.assertEqual(week1["net_games_above_even"], 0)
+
     def test_net_and_cumulative_across_leagues(self):
         resp = self.client.get("/api/wl/weekly?year=2025")
         weeks = resp.get_json()
@@ -115,7 +153,9 @@ class TestCloseGamesApi(WlTestCase):
         resp = self.client.get("/api/wl/close_games?year=2025")
         data = resp.get_json()
         # Alpha week1 margin=20 (excluded), Alpha week2 margin=3 (included),
-        # Beta week1 margin=30 (excluded).
+        # Beta week1 margin=30 (excluded), Gamma week2 margin=0 (excluded --
+        # it's a guillotine elimination-vs-my-score gap, not a real matchup,
+        # and lives in guillotine_weeks so this query never sees it).
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["league_name"], "Alpha")
         self.assertEqual(data[0]["week"], 2)
@@ -216,6 +256,63 @@ class TestPutMatchupApi(WlTestCase):
             json={
                 "league_history_id": 1, "season": 2026, "week": 1,
                 "points_for": 100.0, "points_against": 90.0, "playoff_round": "bogus",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
+class TestPutGuillotineWeekApi(WlTestCase):
+    def test_insert_stores_rank_and_eliminated_score(self):
+        resp = self.client.put(
+            "/api/wl/guillotine_weeks",
+            json={
+                "league_history_id": 3, "season": 2026, "week": 1,
+                "points_for": 140.0, "eliminated_points": 75.0, "rank": 4, "remaining_count": 10,
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["rank"], 4)
+
+        games = self.client.get("/api/wl/games?year=2026").get_json()
+        gamma = next(g for g in games if g["name"] == "Gamma")
+        week1 = next(w for w in gamma["weeks"] if w["week"] == 1)
+        self.assertEqual(week1["rank"], 4)
+        self.assertEqual(week1["eliminated_points"], 75.0)
+
+    def test_overwrite_upserts_not_duplicates(self):
+        self.client.put(
+            "/api/wl/guillotine_weeks",
+            json={
+                "league_history_id": 3, "season": 2026, "week": 1,
+                "points_for": 140.0, "eliminated_points": 75.0, "rank": 4, "remaining_count": 10,
+            },
+        )
+        self.client.put(
+            "/api/wl/guillotine_weeks",
+            json={
+                "league_history_id": 3, "season": 2026, "week": 1,
+                "points_for": 130.0, "eliminated_points": 78.0, "rank": 3, "remaining_count": 9,
+            },
+        )
+        games = self.client.get("/api/wl/games?year=2026").get_json()
+        gamma = next(g for g in games if g["name"] == "Gamma")
+        week1_rows = [w for w in gamma["weeks"] if w["week"] == 1 and w["rank"] is not None]
+        self.assertEqual(len(week1_rows), 1)
+        self.assertEqual(week1_rows[0]["rank"], 3)
+
+    def test_rejects_missing_fields(self):
+        resp = self.client.put(
+            "/api/wl/guillotine_weeks",
+            json={"league_history_id": 3, "season": 2026, "week": 1},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_rejects_rank_greater_than_remaining_count(self):
+        resp = self.client.put(
+            "/api/wl/guillotine_weeks",
+            json={
+                "league_history_id": 3, "season": 2026, "week": 1,
+                "points_for": 140.0, "eliminated_points": 75.0, "rank": 11, "remaining_count": 10,
             },
         )
         self.assertEqual(resp.status_code, 400)
