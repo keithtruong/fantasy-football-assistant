@@ -17,6 +17,7 @@ BASE_DATA = {
     "optimal_lineup_by_team": {},
     "gaffes_by_team": {},
     "waiver_wire": [],
+    "waiver_wire_synced": False,
     "standings": [],
     "next_week": {"week": 2, "matchups": []},
 }
@@ -39,7 +40,13 @@ class TestEmptyWeek(unittest.TestCase):
         self.assertIn("Waiver Wire Watch", html_out)
         self.assertIn("Nobody&#x27;s synced this week&#x27;s free-agent scores yet", html_out)
 
-    def test_waiver_wire_renders_picks_with_comparison(self):
+    def test_waiver_wire_synced_but_nothing_cleared_the_bar(self):
+        html_out = render_recap_html(merged(waiver_wire=[], waiver_wire_synced=True))
+        self.assertIn("Waiver Wire Watch", html_out)
+        self.assertIn("beat their own projection by enough", html_out)
+        self.assertNotIn("Nobody&#x27;s synced this week&#x27;s free-agent scores yet", html_out)
+
+    def test_waiver_wire_renders_points_and_projection(self):
         html_out = render_recap_html(
             merged(
                 waiver_wire=[
@@ -48,24 +55,25 @@ class TestEmptyWeek(unittest.TestCase):
                         "full_name": "Waiver Steal",
                         "position": "RB",
                         "points": 22.0,
-                        "beat_lowest_starter_at_position": True,
-                        "lowest_starter_points": 6.0,
+                        "projected_points": 6.0,
+                        "points_over_projection": 16.0,
                     },
                     {
                         "player_id": 2,
                         "full_name": "Fine I Guess",
                         "position": "WR",
                         "points": 8.0,
-                        "beat_lowest_starter_at_position": False,
-                        "lowest_starter_points": None,
+                        "projected_points": 5.0,
+                        "points_over_projection": 3.0,
                     },
                 ]
             )
         )
         self.assertIn("Waiver Steal", html_out)
-        self.assertIn("more than every started RB", html_out)
+        self.assertIn("22.0 pts", html_out)
+        self.assertIn("projected 6.0", html_out)
         self.assertIn("Fine I Guess", html_out)
-        self.assertIn("somebody out there should've been paying attention", html_out)
+        self.assertIn("projected 5.0", html_out)
 
     def test_header_has_bot_persona(self):
         html_out = render_recap_html(merged(), league_name="TAMS")
@@ -197,6 +205,23 @@ class TestMatchupTabs(unittest.TestCase):
         details = [_matchup_detail_fixture(narrative="A back-and-forth thriller decided on Monday night.")]
         html_out = render_recap_html(merged(matchup_details=details))
         self.assertIn("A back-and-forth thriller decided on Monday night.", html_out)
+
+    def test_renders_headline_above_narrative_when_present(self):
+        details = [
+            _matchup_detail_fixture(
+                narrative_headline="Nail A Barely Survives!",
+                narrative="A back-and-forth thriller decided on Monday night.",
+            )
+        ]
+        html_out = render_recap_html(merged(matchup_details=details))
+        self.assertIn('class="matchup-headline"', html_out)
+        self.assertIn("Nail A Barely Survives!", html_out)
+        self.assertLess(html_out.index("Nail A Barely Survives!"), html_out.index("A back-and-forth thriller"))
+
+    def test_no_headline_block_when_headline_missing(self):
+        details = [_matchup_detail_fixture(narrative="Just a plain recap, no headline written.")]
+        html_out = render_recap_html(merged(matchup_details=details))
+        self.assertNotIn('class="matchup-headline"', html_out)
 
     def test_real_team_name_shown_alongside_owner_name_in_header_and_sides(self):
         details = [
@@ -369,6 +394,7 @@ class TestGaffes(unittest.TestCase):
         self.assertIn("🍆 Boners of the Week", html_out)
         self.assertNotIn("Gaffe of the Week", html_out)
         self.assertNotIn("🚨", html_out)
+        self.assertNotIn("who was sitting right there on the bench", html_out)
 
     def test_no_gaffes_renders_positive_message(self):
         html_out = render_recap_html(merged())

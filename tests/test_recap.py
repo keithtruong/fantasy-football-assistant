@@ -25,7 +25,10 @@ from ffassistant.recap import (
 )
 
 
-def row(team_id, player_id, position, slot_name, points, full_name=None, game_date=None, projected_points=None):
+def row(
+    team_id, player_id, position, slot_name, points, full_name=None, game_date=None, projected_points=None,
+    is_rookie=False,
+):
     return {
         "team_id": team_id,
         "player_id": player_id,
@@ -35,6 +38,7 @@ def row(team_id, player_id, position, slot_name, points, full_name=None, game_da
         "points": points,
         "game_date": game_date,
         "projected_points": projected_points,
+        "is_rookie": is_rookie,
     }
 
 
@@ -232,44 +236,65 @@ class TestStartSitGaffes(unittest.TestCase):
 
 
 class TestWaiverWireDifferenceMakers(unittest.TestCase):
-    def fa(self, player_id, full_name, position, points):
-        return {"player_id": player_id, "full_name": full_name, "position": position, "points": points}
+    def fa(self, player_id, full_name, position, points, projected_points=None):
+        return {
+            "player_id": player_id,
+            "full_name": full_name,
+            "position": position,
+            "points": points,
+            "projected_points": projected_points,
+        }
 
-    def test_top_scorers_sorted_and_limited(self):
-        free_agents = [self.fa(1, "Low", "RB", 5.0), self.fa(2, "High", "RB", 30.0), self.fa(3, "Mid", "WR", 15.0)]
-        result = waiver_wire_difference_makers(free_agents, box_scores=[], limit=2)
-        self.assertEqual([r["full_name"] for r in result], ["High", "Mid"])
-
-    def test_flags_beating_the_lowest_started_score_at_that_position(self):
-        free_agents = [self.fa(1, "Waiver Steal", "RB", 20.0)]
-        box_scores = [
-            row(1, 101, "RB", "RB", 25.0),  # started RB, higher than the free agent
-            row(1, 102, "RB", "RB", 8.0),  # started RB, lower than the free agent — the floor
+    def test_biggest_outlier_per_position_among_those_that_cleared_the_floor(self):
+        free_agents = [
+            self.fa(1, "Small Beat", "RB", 10.0, projected_points=8.0),  # +2.0, clears floor (8.0)
+            self.fa(2, "Big Beat", "RB", 20.0, projected_points=6.0),  # +14.0, clears floor — wins RB
         ]
-        result = waiver_wire_difference_makers(free_agents, box_scores)
-        self.assertTrue(result[0]["beat_lowest_starter_at_position"])
-        self.assertEqual(result[0]["lowest_starter_points"], 8.0)
-
-    def test_does_not_flag_when_free_agent_fails_to_beat_the_floor(self):
-        free_agents = [self.fa(1, "Not That Special", "RB", 5.0)]
         box_scores = [row(1, 101, "RB", "RB", 8.0)]
         result = waiver_wire_difference_makers(free_agents, box_scores)
-        self.assertFalse(result[0]["beat_lowest_starter_at_position"])
+        self.assertEqual([r["full_name"] for r in result], ["Big Beat"])
+        self.assertEqual(result[0]["points_over_projection"], 14.0)
+
+    def test_excludes_free_agent_that_would_not_have_cracked_a_starting_lineup(self):
+        free_agents = [self.fa(1, "Not That Special", "RB", 5.0, projected_points=1.0)]
+        box_scores = [row(1, 101, "RB", "RB", 8.0)]  # floor is 8.0, free agent only scored 5.0
+        result = waiver_wire_difference_makers(free_agents, box_scores)
+        self.assertEqual(result, [])
+
+    def test_excludes_free_agent_with_no_projected_points(self):
+        free_agents = [self.fa(1, "No Projection", "RB", 20.0, projected_points=None)]
+        box_scores = [row(1, 101, "RB", "RB", 8.0)]
+        result = waiver_wire_difference_makers(free_agents, box_scores)
+        self.assertEqual(result, [])
 
     def test_bench_and_ir_excluded_from_the_floor_calculation(self):
-        free_agents = [self.fa(1, "Free Agent", "RB", 10.0)]
+        free_agents = [self.fa(1, "Free Agent", "RB", 10.0, projected_points=2.0)]
         box_scores = [
             row(1, 101, "RB", "BENCH", 1.0),  # benched — must not set an artificially low floor
             row(1, 102, "RB", "IR", 0.5),
         ]
         result = waiver_wire_difference_makers(free_agents, box_scores)
-        self.assertIsNone(result[0]["lowest_starter_points"])  # nobody actually started an RB
+        self.assertEqual(result, [])  # nobody actually started an RB — no floor to clear
 
-    def test_no_starters_at_position_gives_none_floor(self):
-        free_agents = [self.fa(1, "Lone Kicker", "K", 9.0)]
+    def test_no_starters_at_position_excludes_the_free_agent(self):
+        free_agents = [self.fa(1, "Lone Kicker", "K", 9.0, projected_points=1.0)]
         result = waiver_wire_difference_makers(free_agents, box_scores=[])
-        self.assertIsNone(result[0]["lowest_starter_points"])
-        self.assertFalse(result[0]["beat_lowest_starter_at_position"])
+        self.assertEqual(result, [])
+
+    def test_at_most_one_per_position_ordered_by_position_slots(self):
+        free_agents = [
+            self.fa(1, "Best WR", "WR", 20.0, projected_points=5.0),
+            self.fa(2, "Best RB", "RB", 20.0, projected_points=5.0),
+            self.fa(3, "Best QB", "QB", 20.0, projected_points=5.0),
+        ]
+        box_scores = [
+            row(1, 101, "WR", "WR", 8.0),
+            row(1, 102, "RB", "RB", 8.0),
+            row(1, 103, "QB", "QB", 8.0),
+        ]
+        result = waiver_wire_difference_makers(free_agents, box_scores)
+        # POSITION_SLOTS order is QB, RB, WR, TE, DST, K
+        self.assertEqual([r["position"] for r in result], ["QB", "RB", "WR"])
 
 
 class TestTimeWindowFor(unittest.TestCase):
@@ -346,6 +371,21 @@ class TestTopPlayersForTeam(unittest.TestCase):
         team_box_scores = [row(1, 101, "RB", "BENCH", 99.0)]
         self.assertEqual(top_players_for_team(team_box_scores), [])
 
+    def test_carries_is_rookie_through(self):
+        team_box_scores = [
+            row(1, 101, "RB", "RB", 30.0, full_name="Vet", is_rookie=False),
+            row(1, 102, "WR", "WR", 20.0, full_name="Rook", is_rookie=True),
+        ]
+        result = top_players_for_team(team_box_scores)
+        by_name = {p["full_name"]: p["is_rookie"] for p in result}
+        self.assertEqual(by_name, {"Vet": False, "Rook": True})
+
+    def test_missing_is_rookie_defaults_false(self):
+        team_box_scores = [{"team_id": 1, "player_id": 101, "full_name": "No Flag", "position": "RB",
+                             "slot_name": "RB", "points": 10.0}]
+        result = top_players_for_team(team_box_scores)
+        self.assertEqual(result[0]["is_rookie"], False)
+
 
 class TestPerformanceVsProjection(unittest.TestCase):
     def test_flags_overperformance_and_underperformance(self):
@@ -376,6 +416,11 @@ class TestPerformanceVsProjection(unittest.TestCase):
     def test_bench_excluded(self):
         team_box_scores = [row(1, 101, "RB", "BENCH", 99.0, projected_points=1.0)]
         self.assertEqual(performance_vs_projection(team_box_scores), [])
+
+    def test_carries_is_rookie_through(self):
+        team_box_scores = [row(1, 101, "RB", "RB", 30.0, projected_points=12.0, is_rookie=True)]
+        result = performance_vs_projection(team_box_scores)
+        self.assertEqual(result[0]["is_rookie"], True)
 
 
 class TestMatchupDetails(unittest.TestCase):
@@ -479,8 +524,15 @@ class TestNarrativeBrief(unittest.TestCase):
     def test_brief_round_trips_into_apply_narratives(self):
         details = self._sample_details()
         brief = narrative_brief(details)
-        narratives = {entry["key"]: f"Narrative for {entry['team_a']} vs {entry['team_b']}" for entry in brief}
+        narratives = {
+            entry["key"]: {
+                "headline": f"{entry['team_a']} Headline",
+                "body": f"Narrative for {entry['team_a']} vs {entry['team_b']}",
+            }
+            for entry in brief
+        }
         merged = apply_narratives(details, narratives)
+        self.assertEqual(merged[0]["narrative_headline"], "A Headline")
         self.assertEqual(merged[0]["narrative"], "Narrative for A vs B")
 
 
@@ -504,6 +556,13 @@ class TestApplyNarratives(unittest.TestCase):
         details = self._sample_details()
         merged = apply_narratives(details, {"1-2": "They fought hard."})
         by_key = {narrative_key(m["team_a"]["team_id"], m["team_b"]["team_id"]): m for m in merged}
+        self.assertEqual(by_key["1-2"]["narrative"], "They fought hard.")
+
+    def test_dict_shaped_narrative_sets_headline_and_body(self):
+        details = self._sample_details()
+        merged = apply_narratives(details, {"1-2": {"headline": "A Stuns B!", "body": "They fought hard."}})
+        by_key = {narrative_key(m["team_a"]["team_id"], m["team_b"]["team_id"]): m for m in merged}
+        self.assertEqual(by_key["1-2"]["narrative_headline"], "A Stuns B!")
         self.assertEqual(by_key["1-2"]["narrative"], "They fought hard.")
 
     def test_missing_key_keeps_existing_narrative_instead_of_erroring(self):
@@ -617,14 +676,28 @@ class TestNextWeekPreview(unittest.TestCase):
         self.assertNotIn("standings_battle", by_pair[frozenset((1, 5))]["tags"])
         self.assertNotIn("top_seed_clash", by_pair[frozenset((2, 3))]["tags"])
 
-    def test_playoff_bubble_tagged_when_pct_in_doubt(self):
+    def test_playoff_bubble_tagged_when_pct_in_doubt_and_late_in_season(self):
         standings = [standing_row(1, rank=5, playoff_pct=50.0), standing_row(2, rank=9, playoff_pct=2.0)]
-        result = next_week_preview(standings, [(1, 2)], {})
+        result = next_week_preview(standings, [(1, 2)], {}, week=12)
         self.assertIn("playoff_bubble", result[0]["tags"])
 
     def test_no_playoff_bubble_tag_when_both_sides_are_locks(self):
         standings = [standing_row(1, rank=1, playoff_pct=99.0), standing_row(2, rank=2, playoff_pct=1.0)]
-        result = next_week_preview(standings, [(1, 2)], {})
+        result = next_week_preview(standings, [(1, 2)], {}, week=12)
+        self.assertNotIn("playoff_bubble", result[0]["tags"])
+
+    def test_no_playoff_bubble_tag_early_in_season_even_when_pct_in_doubt(self):
+        # This is the actual bug Keith flagged: week 1-2 playoff_pct hasn't
+        # differentiated teams yet, so nearly everyone lands in the "in
+        # doubt" band — without a week gate this tags almost every matchup
+        # of the whole season, not just the ones that matter.
+        standings = [standing_row(1, rank=5, playoff_pct=50.0), standing_row(2, rank=9, playoff_pct=45.0)]
+        result = next_week_preview(standings, [(1, 2)], {}, week=2)
+        self.assertNotIn("playoff_bubble", result[0]["tags"])
+
+    def test_no_playoff_bubble_tag_when_week_not_passed(self):
+        standings = [standing_row(1, rank=5, playoff_pct=50.0), standing_row(2, rank=9, playoff_pct=45.0)]
+        result = next_week_preview(standings, [(1, 2)], {})  # no week= at all
         self.assertNotIn("playoff_bubble", result[0]["tags"])
 
     def test_high_scoring_tagged_when_both_at_or_above_average(self):
@@ -668,7 +741,7 @@ class TestNextWeekPreview(unittest.TestCase):
             standing_row(3, rank=9),
             standing_row(4, rank=10),
         ]
-        result = next_week_preview(standings, [(3, 4), (1, 2)], {})
+        result = next_week_preview(standings, [(3, 4), (1, 2)], {}, week=12)
         self.assertEqual({result[0]["team_a"]["team_id"], result[0]["team_b"]["team_id"]}, {1, 2})
         self.assertEqual(len(result[0]["tags"]), 2)
 

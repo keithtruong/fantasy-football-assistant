@@ -29,13 +29,13 @@ class TestGatherRecapData(unittest.TestCase):
             [("QB", 1), ("RB", 1), ("BENCH", 3)],
         )
         self.conn.executemany(
-            "INSERT INTO players (player_id, full_name, position) VALUES (?, ?, ?)",
+            "INSERT INTO players (player_id, full_name, position, is_rookie) VALUES (?, ?, ?, ?)",
             [
-                (100, "Team Ten QB", "QB"),
-                (101, "Team Ten RB", "RB"),
-                (102, "Team Ten Bench RB", "RB"),
-                (200, "Team Twenty QB", "QB"),
-                (201, "Team Twenty RB", "RB"),
+                (100, "Team Ten QB", "QB", 0),
+                (101, "Team Ten RB", "RB", 1),
+                (102, "Team Ten Bench RB", "RB", 0),
+                (200, "Team Twenty QB", "QB", 0),
+                (201, "Team Twenty RB", "RB", 0),
             ],
         )
         self.conn.executemany(
@@ -57,8 +57,8 @@ class TestGatherRecapData(unittest.TestCase):
             "INSERT INTO players (player_id, full_name, position) VALUES (300, 'Waiver Steal', 'RB')"
         )
         self.conn.execute(
-            "INSERT INTO weekly_free_agent_scores (league_id, season, week, player_id, points) "
-            "VALUES (1, 2025, 1, 300, 12.0)"
+            "INSERT INTO weekly_free_agent_scores (league_id, season, week, player_id, points, projected_points) "
+            "VALUES (1, 2025, 1, 300, 12.0, 3.0)"
         )
         self.conn.commit()
 
@@ -102,13 +102,15 @@ class TestGatherRecapData(unittest.TestCase):
         self.assertEqual(result["best_by_slot"]["QB"]["team_id"], 10)  # 20.0 beats 10.0
         self.assertIsNone(result["best_by_slot"]["K"])  # no K data at all
 
-    def test_waiver_wire_flags_beating_the_lowest_starter(self):
+    def test_waiver_wire_flags_the_outlier_that_cleared_the_floor(self):
         result = gather_recap_data(self.conn, league_id=1, season=2025, week=1)
         self.assertEqual(len(result["waiver_wire"]), 1)
         steal = result["waiver_wire"][0]
         self.assertEqual(steal["full_name"], "Waiver Steal")
-        self.assertTrue(steal["beat_lowest_starter_at_position"])
-        self.assertEqual(steal["lowest_starter_points"], 5.0)  # Team Ten's started RB
+        self.assertEqual(steal["points"], 12.0)
+        self.assertEqual(steal["projected_points"], 3.0)
+        self.assertEqual(steal["points_over_projection"], 9.0)
+        self.assertTrue(result["waiver_wire_synced"])
 
     def test_matchup_details_present_and_enriched(self):
         result = gather_recap_data(self.conn, league_id=1, season=2025, week=1)
@@ -118,6 +120,13 @@ class TestGatherRecapData(unittest.TestCase):
         self.assertIn("top_players", detail["team_a_detail"])
         self.assertIn("score_by_checkpoint", detail["team_b_detail"])
 
+    def test_top_players_carry_is_rookie_from_the_players_table(self):
+        result = gather_recap_data(self.conn, league_id=1, season=2025, week=1)
+        team_10_players = result["matchup_details"][0]["team_a_detail"]["top_players"]
+        by_name = {p["full_name"]: p["is_rookie"] for p in team_10_players}
+        self.assertEqual(by_name["Team Ten QB"], False)
+        self.assertEqual(by_name["Team Ten RB"], True)
+
     def test_empty_week_returns_empty_shape_not_error(self):
         result = gather_recap_data(self.conn, league_id=1, season=2025, week=17)
         self.assertEqual(result["team_scores"], {})
@@ -126,6 +135,7 @@ class TestGatherRecapData(unittest.TestCase):
         self.assertEqual(result["matchup_details"], [])
         self.assertEqual(result["optimal_lineup_by_team"], {})
         self.assertEqual(result["waiver_wire"], [])
+        self.assertFalse(result["waiver_wire_synced"])
 
     def test_owner_meta_empty_when_no_owners_rows(self):
         result = gather_recap_data(self.conn, league_id=1, season=2025, week=1)

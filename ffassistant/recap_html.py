@@ -293,7 +293,9 @@ def _render_matchups(data: dict) -> str:
         )
         chart_block = chart or '<p class="section-note">Not enough game-time data synced yet to chart this one.</p>'
         narrative = m.get("narrative")
-        narrative_block = f'<p class="matchup-narrative">{_esc(narrative)}</p>' if narrative else ""
+        headline = m.get("narrative_headline")
+        headline_block = f'<h3 class="matchup-headline">{_esc(headline)}</h3>' if headline else ""
+        narrative_block = f'{headline_block}<p class="matchup-narrative">{_esc(narrative)}</p>' if narrative else ""
 
         panels.append(
             f"""<div class="matchup-panel" id="{panel_id}">
@@ -310,8 +312,18 @@ def _render_matchups(data: dict) -> str:
             </div>"""
         )
 
+    # Both rules use the general-sibling combinator (~), matched by each tab's
+    # own id, rather than the adjacent-sibling combinator (+) on class alone.
+    # The DOM here is a flat run of all <input>s, then all <label>s, then all
+    # panels (see the join order right below) — so a label is almost never
+    # the checked input's *immediate* next sibling; a class-only "+" selector
+    # would only ever match the wraparound case (last input -> first label),
+    # which is exactly the "wrong tab lights up" bug this replaced.
     toggle_css = "".join(
-        f'#matchup-tab-{i}:checked ~ #matchup-panel-{i} {{ display: block; }}' for i in range(len(details))
+        f'#matchup-tab-{i}:checked ~ #matchup-panel-{i} {{ display: block; }}'
+        f'#matchup-tab-{i}:checked ~ label[for="matchup-tab-{i}"] {{ '
+        f'background: var(--accent); color: #fff; border-color: var(--accent); }}'
+        for i in range(len(details))
     )
 
     return f"""
@@ -434,8 +446,7 @@ def _render_gaffes(data: dict) -> str:
         f"""<li>
           <strong>{_esc(g['team_name'])}</strong> started
           <strong>{_esc(g['started']['full_name'])}</strong> ({_fmt(g['started']['points'])} pts) over
-          <strong>{_esc(g['benched']['full_name'])}</strong> ({_fmt(g['benched']['points'])} pts),
-          who was sitting right there on the bench —
+          <strong>{_esc(g['benched']['full_name'])}</strong> ({_fmt(g['benched']['points'])} pts) —
           <span class="missed">{_fmt(g['missed_points'])} points</span> left on the table.
         </li>"""
         for g in worst
@@ -452,6 +463,13 @@ def _render_gaffes(data: dict) -> str:
 def _render_waiver_wire(data: dict) -> str:
     waiver_wire = data.get("waiver_wire") or []
     if not waiver_wire:
+        if data.get("waiver_wire_synced"):
+            return _empty_section(
+                "Waiver Wire Watch",
+                "Nobody among this week's free agents beat their own projection by enough to "
+                "have cracked a starting lineup — either great rosters, or a quiet week for "
+                "free agents.",
+            )
         return _empty_section(
             "Waiver Wire Watch",
             "Nobody's synced this week's free-agent scores yet — this section needs "
@@ -463,13 +481,8 @@ def _render_waiver_wire(data: dict) -> str:
     items = "".join(
         f"""<li>
           {_position_chip(p['position'])}
-          <strong>{_esc(p['full_name'])}</strong> put up <strong>{_fmt(p['points'])} pts</strong> on the wire —
-          {(
-              f"more than every started {_esc(POSITION_LABELS.get(p['position'], p['position']))} in the league "
-              f"(the lowest starter there managed just {_fmt(p['lowest_starter_points'])})."
-              if p["beat_lowest_starter_at_position"]
-              else "somebody out there should've been paying attention."
-          )}
+          <strong>{_esc(p['full_name'])}</strong> put up <strong>{_fmt(p['points'])} pts</strong>
+          (projected {_fmt(p['projected_points'])}).
         </li>"""
         for p in waiver_wire
     )
@@ -477,7 +490,7 @@ def _render_waiver_wire(data: dict) -> str:
     return f"""
     <section class="recap-section">
       <h2>🕵️ Waiver Wire Watch</h2>
-      <p class="section-note">This week's best free-agent scores — nobody in the league rostered these guys.</p>
+      <p class="section-note">Nobody in the league rostered these guys — one per position, each good enough to have cracked a starting lineup.</p>
       <ul class="waiver-list">{items}</ul>
     </section>
     """
@@ -634,8 +647,8 @@ body {{
   max-width: 760px; margin: 0 auto 22px; background: var(--surface); border: 1px solid var(--line);
   border-radius: 8px; padding: 18px 20px;
 }}
-.recap-section h2 {{ margin: 0 0 12px; font-size: 17px; color: var(--ink-strong); }}
-.section-note {{ margin: 0; color: var(--ink-muted); font-size: 13.5px; }}
+.recap-section h2 {{ margin: 0 0 16px; font-size: 17px; color: var(--accent); }}
+.section-note {{ margin: 0 0 14px; color: var(--ink-muted); font-size: 13.5px; }}
 table.recap-table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
 table.recap-table th {{
   text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
@@ -665,7 +678,7 @@ table.recap-table td {{ padding: 7px 8px; border-bottom: 1px solid var(--line); 
 .perf-name {{ min-width: 0; }}
 .rank-num {{ color: var(--ink-muted); font-size: 11.5px; margin-right: 4px; }}
 .team-tag {{ color: var(--ink-muted); font-size: 12px; }}
-.owner-tag {{ color: var(--ink-muted); font-size: 13px; font-weight: 400; }}
+.owner-tag {{ color: var(--accent); font-size: 13px; font-weight: 400; }}
 .pts {{ flex: 0 0 auto; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }}
 .award-card {{ text-align: center; flex: 1 1 150px; }}
 .award-label {{ font-size: 11.5px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.02em; margin-top: 8px; }}
@@ -683,12 +696,17 @@ ul.waiver-list li {{ margin-bottom: 10px; }}
   cursor: pointer; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--bg); font-size: 12.5px; font-weight: 600; color: var(--ink-muted); user-select: none;
 }}
-.matchup-tab-input:checked + .matchup-tab-label {{ background: var(--accent); color: #fff; border-color: var(--accent); }}
+/* Per-tab highlight rules are generated alongside the panel-toggle rules
+   in _render_matchups' toggle_css — see that function's comment for why a
+   plain ":checked + .matchup-tab-label" rule doesn't work here. */
 .matchup-panel {{ display: none; flex-basis: 100%; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }}
 .matchup-panel-score {{ font-size: 16px; }}
+.matchup-headline {{
+  font-size: 15px; font-weight: 700; color: var(--accent); margin: 14px 0 0 0;
+}}
 .matchup-narrative {{
   font-size: 13.5px; font-style: italic; color: var(--ink); background: var(--bg);
-  border-left: 3px solid var(--accent); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0;
+  border-left: 3px solid var(--accent); padding: 8px 12px; margin: 10px 0 10px 0; border-radius: 0 4px 4px 0;
 }}
 .checkpoint-chart {{ width: 100%; height: auto; margin-top: 8px; display: block; }}
 .chart-axis {{ stroke: var(--line); stroke-width: 1; }}
@@ -706,7 +724,7 @@ ul.waiver-list li {{ margin-bottom: 10px; }}
   font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em;
   color: var(--accent); margin-top: 12px; padding-bottom: 4px; border-bottom: 2px solid var(--accent);
 }}
-.matchup-side ul {{ list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; }}
+.matchup-side ul {{ list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }}
 .matchup-side li {{ display: flex; align-items: center; gap: 6px; padding: 2px 0; }}
 .matchup-side .pts {{ margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }}
 .surprise-over {{ color: var(--steal); }}

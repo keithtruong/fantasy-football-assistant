@@ -189,14 +189,18 @@ def get_free_agent_scores(
 ) -> list[dict]:
     """That week's actual fantasy points for players nobody in the league
     rosters — the "waiver wire" pool — as
-    {source_player_id, full_name, position, nfl_team, points}, one entry per
-    free agent/waiver-eligible player.
+    {source_player_id, full_name, position, nfl_team, points, projected_points},
+    one entry per free agent/waiver-eligible player.
 
     espn_api's League.free_agents(week=N) returns the same BoxPlayer wrapper
     get_box_scores' lineups use, with a real per-week .points (pulled from
     that player's own week-N stat entry regardless of roster status) — so,
     contrary to an earlier assumption in this project, box scores aren't the
-    only source of real weekly points; free agents carry them too.
+    only source of real weekly points; free agents carry them too. Same
+    wrapper means `projected_points` is available here too — ESPN's own
+    pre-game projection, the same field get_box_scores exposes — which is
+    what lets the recap's Waiver Wire Watch flag an outlier score relative
+    to expectation rather than just whoever scored the most raw points.
 
     `size` caps how many free agents ESPN returns (sorted by percent-owned,
     most-owned first) — 300 comfortably covers a 12-team league's whole
@@ -218,6 +222,7 @@ def get_free_agent_scores(
             "position": _map_position(player.position),
             "nfl_team": player.proTeam,
             "points": player.points,
+            "projected_points": getattr(player, "projected_points", None),
         }
         for player in free_agents
     ]

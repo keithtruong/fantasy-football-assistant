@@ -36,7 +36,7 @@ def gather_recap_data(conn: sqlite3.Connection, league_id: int, season: int, wee
     league/season/week: {'league_id', 'season', 'week', 'team_names',
     'team_real_names', 'team_scores', 'high_low', 'matchups',
     'matchup_details', 'biggest_closest', 'top_performers', 'best_by_slot',
-    'optimal_lineup_by_team', 'gaffes_by_team', 'waiver_wire',
+    'optimal_lineup_by_team', 'gaffes_by_team', 'waiver_wire', 'waiver_wire_synced',
     'owner_meta', 'standings', 'next_week'}. matchup_details is matchups enriched per side with
     score_by_checkpoint/top_players/performance_vs_projection — the full
     per-matchup story, ordered closest-margin first (is_matchup_of_the_week)
@@ -81,7 +81,7 @@ def gather_recap_data(conn: sqlite3.Connection, league_id: int, season: int, wee
         """
         SELECT wbs.team_id, wbs.player_id, wbs.slot_name, wbs.points,
                wbs.game_date, wbs.projected_points,
-               p.full_name, p.position,
+               p.full_name, p.position, p.is_rookie,
                COALESCE(o.display_nickname, t.display_name, t.team_name) AS team_name,
                t.team_name AS team_real_name
         FROM weekly_box_scores wbs
@@ -126,7 +126,7 @@ def gather_recap_data(conn: sqlite3.Connection, league_id: int, season: int, wee
 
     free_agent_rows = conn.execute(
         """
-        SELECT wfa.player_id, wfa.points, p.full_name, p.position
+        SELECT wfa.player_id, wfa.points, wfa.projected_points, p.full_name, p.position
         FROM weekly_free_agent_scores wfa
         JOIN players p ON p.player_id = wfa.player_id
         WHERE wfa.league_id = ? AND wfa.season = ? AND wfa.week = ?
@@ -206,12 +206,18 @@ def gather_recap_data(conn: sqlite3.Connection, league_id: int, season: int, wee
         },
         "gaffes_by_team": {team_id: start_sit_gaffes(rows) for team_id, rows in by_team.items()},
         "waiver_wire": waiver_wire_difference_makers(free_agent_scores, box_scores),
+        # Distinguishes "nobody's run the sync yet" from "the sync ran, but
+        # no free agent this week actually cleared a starting lineup's
+        # floor" — both leave "waiver_wire" empty, but they're very
+        # different situations to tell the reader about (see
+        # recap_html._render_waiver_wire).
+        "waiver_wire_synced": bool(free_agent_scores),
         "owner_meta": owner_meta,
         "standings": standings,
         "next_week": {
             "week": next_week,
             "matchups": next_week_preview(
-                standings, upcoming_matchup_pairs(next_week_pairs_raw), projected_scores, owner_meta
+                standings, upcoming_matchup_pairs(next_week_pairs_raw), projected_scores, owner_meta, week=next_week
             ),
         },
     }

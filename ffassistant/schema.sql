@@ -201,6 +201,12 @@ CREATE TABLE IF NOT EXISTS weekly_free_agent_scores (
     week            INTEGER NOT NULL,
     player_id       INTEGER NOT NULL REFERENCES players (player_id) ON DELETE CASCADE,
     points          REAL NOT NULL,
+    -- ESPN's pre-game projection for that week, nullable since it didn't
+    -- exist before this feature — lets Waiver Wire Watch flag an outlier
+    -- score relative to expectation (see
+    -- ffassistant.recap.waiver_wire_difference_makers) instead of just
+    -- whoever scored the most raw points.
+    projected_points REAL,
     fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (league_id, season, week, player_id)
 );

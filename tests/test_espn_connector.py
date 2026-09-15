@@ -223,8 +223,8 @@ class TestGetFreeAgentScores(unittest.TestCase):
     def test_maps_fields_and_passes_week_and_size_through(self, mock_connect):
         league = MagicMock()
         league.free_agents.return_value = [
-            fake_box_player(301, "Waiver Wire Hero", "RB", "DAL", "FA", 22.5),
-            fake_box_player(302, "Streaming DST", "D/ST", "SF", "FA", 14.0),
+            fake_box_player(301, "Waiver Wire Hero", "RB", "DAL", "FA", 22.5, projected_points=11.2),
+            fake_box_player(302, "Streaming DST", "D/ST", "SF", "FA", 14.0, projected_points=6.5),
         ]
         mock_connect.return_value = league
 
@@ -240,6 +240,7 @@ class TestGetFreeAgentScores(unittest.TestCase):
                 "position": "RB",
                 "nfl_team": "DAL",
                 "points": 22.5,
+                "projected_points": 11.2,
             },
         )
         self.assertEqual(entries[1]["position"], "DST")  # mapped from 'D/ST'

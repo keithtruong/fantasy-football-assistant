@@ -14,11 +14,43 @@ workflow is three steps:
           exist, an empty *_narratives.json stub to fill in.
 
     2. (a live Claude session, NOT this script) reads the brief and writes
-       one narrative string per matchup into the stub's
+       one {"headline": ..., "body": ...} entry per matchup into the stub's
        "matchup_narratives" dict, keyed by the brief entry's own "key"
        field (see ffassistant.recap.narrative_key/narrative_brief) — this
        is the same "a Claude session does this part live, not an API" shape
        as the Next Week Preview's Vegas over/under research.
+
+       Style, per Keith's explicit direction (modeled on real Yahoo AI
+       matchup recaps he supplied as examples — see DECISIONS.md): headline
+       is one punchy, punny line built from the actual team/player names
+       ("American Njigba Warrior Makes The Vinegar Strokes Look Like a D-
+       Student!" is a real Yahoo one); body is full Yahoo-caliber snark —
+       sarcastic similes, needling the losing side by name, citing the
+       real over/under-projection numbers from top_players_*/surprises_*
+       rather than inventing flavor. No letter grades (A+/D- report-card
+       gimmick) and no closing tease about next week — Keith turned both
+       of those down; end the body once this week's story is told. See
+       ffassistant.recap.narrative_brief's docstring for the full style
+       guide and worked examples.
+
+       Two required checks before finalizing a narrative, both because the
+       brief's numbers alone aren't enough to write it correctly:
+
+       - Experience level: every player in top_players_a/b and
+         surprises_a/b carries is_rookie — read it off that field, don't
+         guess from memory/training data which draft class someone belongs
+         to. A second-year (or later) player described as a "rookie" is a
+         real, recurring mistake, not a hypothetical (see DECISIONS.md or
+         ask Keith if unsure why this note exists).
+       - In-game injuries: there is no in-game injury-timeline data in this
+         project — box score points alone can't reveal that someone left
+         hurt (they can outscore their projection before leaving, so even a
+         big game is no evidence either way). Before finalizing each
+         matchup's narrative, web-search for injury news on that matchup's
+         featured players (anyone named in top_players_a/b or
+         surprises_a/b) and reflect anything found in the prose. This is a
+         required step, not a nice-to-have — skipping it is how a
+         mid-game injury goes unmentioned.
 
     3. python -m scripts.render_weekly_recap --league-id 3 [...]
        merges that narratives file back in, renders the HTML, writes it to

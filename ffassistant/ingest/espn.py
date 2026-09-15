@@ -7,6 +7,7 @@ import sqlite3
 
 from ffassistant.connectors import espn as espn_api
 from ffassistant.ingest._teams import remove_stale_teams, resolve_or_create_player, upsert_weekly_matchup
+from ffassistant.season import LAST_WEEK
 
 # ESPN's injuryStatus strings, mapped down to this project's player_status enum.
 _INJURY_STATUS_MAP = {
@@ -114,6 +115,16 @@ def _sync_teams_and_rosters(
 
     if week is not None:
         _sync_matchups(conn, league_id, espn_league_id, year, week, team_id_by_platform_id)
+        # ESPN publishes the whole regular-season schedule upfront — a
+        # matchup pairing isn't something that only becomes knowable once
+        # its week "arrives." Syncing next week's pairings too, on every
+        # regular refresh, means the recap's Next Week Preview always has
+        # them ready by the time it needs them, rather than depending on
+        # someone happening to run this again after the current week ends.
+        # Cheap and harmless to repeat (full-replace per week, same as the
+        # current-week call above) — this doesn't reach past the season.
+        if week + 1 <= LAST_WEEK:
+            _sync_matchups(conn, league_id, espn_league_id, year, week + 1, team_id_by_platform_id)
 
 
 def _sync_matchups(conn, league_id, espn_league_id, season, week, team_id_by_platform_id) -> None:
@@ -216,10 +227,11 @@ def sync_free_agent_scores(
     for entry in entries:
         player_id = resolve_or_create_player(conn, "espn", entry)
         conn.execute(
-            "INSERT INTO weekly_free_agent_scores (league_id, season, week, player_id, points) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT (league_id, season, week, player_id) DO UPDATE SET points = excluded.points",
-            (league_id, season, week, player_id, entry["points"]),
+            "INSERT INTO weekly_free_agent_scores (league_id, season, week, player_id, points, projected_points) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (league_id, season, week, player_id) "
+            "DO UPDATE SET points = excluded.points, projected_points = excluded.projected_points",
+            (league_id, season, week, player_id, entry["points"], entry.get("projected_points")),
         )
         written += 1
 

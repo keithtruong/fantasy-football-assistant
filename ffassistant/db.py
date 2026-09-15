@@ -77,6 +77,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "projected_points" not in weekly_box_scores_columns:
         conn.execute("ALTER TABLE weekly_box_scores ADD COLUMN projected_points REAL")
 
+    weekly_free_agent_scores_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(weekly_free_agent_scores)")
+    }
+    if "projected_points" not in weekly_free_agent_scores_columns:
+        conn.execute("ALTER TABLE weekly_free_agent_scores ADD COLUMN projected_points REAL")
+
     league_history_columns = {row["name"] for row in conn.execute("PRAGMA table_info(league_history)")}
     if "format" not in league_history_columns:
         conn.execute(

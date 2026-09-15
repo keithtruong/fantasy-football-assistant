@@ -6,6 +6,33 @@ Newest entries at the top.
 
 ---
 
+## 2026-09-15 — Matchup Stories tab-highlight bug, plus recap-wide styling pass
+
+**Bug:** Keith reported that the Matchup Stories tab buttons highlighted wrong — the first tab (Helmuth vs. Patel) was orange on load, but clicking any other tab cleared all highlighting, and clicking the *last* tab (Cissy vs. Walters) lit up the *first* tab instead.
+
+**Root cause:** `_render_matchups` builds the tab markup as three flat runs — all `<input>`s, then all `<label>`s, then all panels — so a label is essentially never the *immediately following* sibling of its own input in the DOM (only the last input's next element happens to be the first label). The highlight rule was `.matchup-tab-input:checked + .matchup-tab-label`, which uses the adjacent-sibling combinator (`+`) — it only ever matched that one wraparound case, which is exactly the observed bug. The panel-switching rule right next to it (`:checked ~ #matchup-panel-N`) already used the general-sibling combinator (`~`) scoped by each tab's own id, which is why *that* part worked correctly the whole time.
+
+**Fix:** generate one `:checked ~ label[for="matchup-tab-N"]` rule per tab (same `~` + per-id pattern as the panel rule, right next to it in `toggle_css`) instead of a single class-based `+` rule. This is DOM-order-proof and matches regardless of how many tabs wrap onto a second row at a given screen width.
+
+**Styling pass, same conversation:** Keith asked for the orange accent color to be used more broadly and for more breathing room around subheaders in a few sections.
+- `.recap-section h2` (all section headers, e.g. "🏟️ Matchup Stories") and `.matchup-headline` (the per-matchup Yahoo-style headline) now use `var(--accent)` instead of `var(--ink-strong)`/`var(--ink)` — `.side-subhead` ("🌟 Top Players" / "😲 Surprises") already used accent, so this makes all header levels consistent.
+- `.owner-tag` (the owner nickname in parentheses next to a real team name, e.g. "Bijan'd meAt (KB)") now uses `var(--accent)` instead of `var(--ink-muted)`.
+- More vertical space after subheaders: `.recap-section h2` margin-bottom 12px→16px, `.section-note` gained a 14px bottom margin (was 0 — this is what mainly closed the gap in Matchup Stories/Lineup Efficiency/Week # Preview, since all three go straight from the note into a table/tabs/grid), `.matchup-side ul` top margin 4px→8px, and `.matchup-narrative`/`.matchup-headline` top margins bumped slightly.
+
+---
+
+## 2026-09-15 — Matchup Stories styled on real Yahoo AI recaps
+
+**Context:** Keith wanted the weekly recap's Matchup Stories to read more like Yahoo's own AI-generated matchup recaps rather than the plainer prose it started as. He supplied three real Yahoo recap URLs (private-league pages, fetched via WebFetch) as reference examples.
+
+**Pattern extracted from the three Yahoo examples:** a punchy, punny headline built from team/player names ("American Njigba Warrior Makes The Vinegar Strokes Look Like a D- Student!"); a letter grade per team (school-report-card style, A+ down to D-); sarcastic similes and needling commentary aimed at the losing side ("about as useful as a screen door on a submarine," "like a chocolate teapot"); real over/under-projection numbers cited as the basis for the jokes, not invented flavor; and a closing forward-looking tease or rhetorical question about next week.
+
+**Keith adopted the headline and the full snark level, but explicitly declined letter grades and the closing tease** — asked directly via each element rather than assumed. So TAMS' version: headline + body, both written in Yahoo-caliber trash-talk tone, but the body ends once this week's story is told (no A+/D- grade, no "can they rise from the ashes?" close).
+
+**Narrative data model changed from a plain string to `{"headline": str, "body": str}` per matchup** (`ffassistant.recap.apply_narratives`/`narrative_brief`) — a structured pair rather than parsing a headline out of free text, since the two need separate HTML treatment (`.matchup-headline` vs `.matchup-narrative` in `recap_html.py`). `apply_narratives` still accepts a plain string too (treated as body-only, no headline) so an older narratives file written before this change doesn't break.
+
+---
+
 ## 2026-09-07 — Canonical NFL team codes
 
 **Context:** The Exposure page showed a rostered Commanders player (Jacory Croskey-Merritt) under a "WAS" team bucket *and* listed "WSH" as a team with zero exposure — two entries for one real NFL team. Root cause: no team-abbreviation normalization anywhere. Each source stores its own spelling — ESPN `WSH`, Yahoo title-case (`Was`, `Bal`, `Sea`), Sleeper and the rankings provider `WAS` (and `LA` for the Rams) — while the per-team reference tables (`nfl_team_byes`, `nfl_team_playoff_sos`, `nfl_team_schedule`, `nfl_team_implied_totals`) each key off a single spelling. `players.nfl_team` had accumulated `WAS`×9, `WSH`×2, `Was`×1, `LA`×2, title-case drift on eight more teams, and two literal `'None'` strings. Bye/SOS/implied-total joins were silently failing for every drifted row, not just on Exposure.

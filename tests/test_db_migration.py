@@ -168,6 +168,45 @@ class LeaguesPlatformMigrationTestCase(unittest.TestCase):
         self.assertEqual(updated["projected_points"], 12.5)
         conn.close()
 
+    def test_init_db_adds_projected_points_to_free_agent_scores(self):
+        self._seed_old_schema()
+        conn = sqlite3.connect(self.db_path)
+        # weekly_free_agent_scores' pre-this-feature shape (no projected_points).
+        conn.executescript(
+            """
+            CREATE TABLE players (player_id INTEGER PRIMARY KEY, full_name TEXT NOT NULL, position TEXT NOT NULL);
+            CREATE TABLE weekly_free_agent_scores (
+                free_agent_score_id INTEGER PRIMARY KEY,
+                league_id INTEGER NOT NULL,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                player_id INTEGER NOT NULL,
+                points REAL NOT NULL,
+                fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        conn.execute("INSERT INTO players (player_id, full_name, position) VALUES (1, 'Old Free Agent', 'RB')")
+        conn.execute(
+            "INSERT INTO weekly_free_agent_scores (league_id, season, week, player_id, points) "
+            "VALUES (1, 2025, 1, 1, 9.0)"
+        )
+        conn.commit()
+        conn.close()
+
+        init_db(self.db_path)
+
+        conn = get_connection(self.db_path)
+        row = conn.execute("SELECT * FROM weekly_free_agent_scores WHERE free_agent_score_id = 1").fetchone()
+        self.assertEqual(row["points"], 9.0)  # pre-existing row survived
+        self.assertIsNone(row["projected_points"])  # new column present, NULL until a resync populates it
+
+        conn.execute("UPDATE weekly_free_agent_scores SET projected_points = 4.0 WHERE free_agent_score_id = 1")
+        conn.commit()
+        updated = conn.execute("SELECT * FROM weekly_free_agent_scores WHERE free_agent_score_id = 1").fetchone()
+        self.assertEqual(updated["projected_points"], 4.0)
+        conn.close()
+
     def test_init_db_is_idempotent(self):
         self._seed_old_schema()
         init_db(self.db_path)

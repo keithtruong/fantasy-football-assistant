@@ -356,12 +356,27 @@ def start_sit_gaffes(team_box_scores: list[dict]) -> list[dict]:
 
 def top_players_for_team(team_box_scores: list[dict], limit: int = 3) -> list[dict]:
     """Top-scoring STARTED players for ONE team, best-first — {player_id,
-    full_name, position, points} — the "who carried this team" list for a
-    single matchup. Unlike top_performers_by_position (league-wide, grouped
-    by position), this is scoped to one team and ranks across positions."""
+    full_name, position, points, is_rookie} — the "who carried this team"
+    list for a single matchup. Unlike top_performers_by_position
+    (league-wide, grouped by position), this is scoped to one team and
+    ranks across positions.
+
+    is_rookie is players.is_rookie (True/False), included specifically so a
+    narrative writer has ground truth on draft-class experience rather than
+    guessing from memory — a second-year player described as a "rookie" is
+    a real, recurring mistake a Claude session can make from training data
+    alone. Defaults to False for a row without the column (e.g. an older
+    test fixture) rather than erroring.
+    """
     started = [row for row in team_box_scores if row["slot_name"] not in STARTED_EXCLUDED_SLOTS]
     players = [
-        {"player_id": r["player_id"], "full_name": r["full_name"], "position": r["position"], "points": r["points"]}
+        {
+            "player_id": r["player_id"],
+            "full_name": r["full_name"],
+            "position": r["position"],
+            "points": r["points"],
+            "is_rookie": bool(r.get("is_rookie")),
+        }
         for r in started
     ]
     return sorted(players, key=lambda p: p["points"], reverse=True)[:limit]
@@ -370,19 +385,25 @@ def top_players_for_team(team_box_scores: list[dict], limit: int = 3) -> list[di
 def performance_vs_projection(team_box_scores: list[dict], big_game_threshold: float = 5.0) -> list[dict]:
     """STARTED players whose actual points meaningfully beat or missed
     ESPN's pre-game projection — {player_id, full_name, points,
-    projected_points, delta, tag: 'over'|'under'}, sorted by the size of the
-    surprise (|delta|) descending. The "who had a big game / who cratered"
-    signal for a matchup's narrative.
+    projected_points, delta, tag: 'over'|'under', is_rookie}, sorted by the
+    size of the surprise (|delta|) descending. The "who had a big game / who
+    cratered" signal for a matchup's narrative. is_rookie is players.is_rookie
+    (True/False) — see top_players_for_team's docstring for why it's here.
 
     A row with no projected_points (None) is skipped entirely rather than
     treated as 0 — that would manufacture a fake "huge overperformance" out
     of missing data. big_game_threshold filters out normal week-to-week
     noise; only surprises at least that large are worth narrating.
 
-    This is a projection-delta proxy, not real injury detection — a true
-    "left the game hurt" callout would need to cross-reference that week's
-    player_status snapshot, which this doesn't do. Flagging that gap rather
-    than guessing at it from points alone.
+    This is a projection-delta proxy, not real injury detection, and can't
+    be turned into one: ESPN doesn't expose an in-game injury timeline this
+    project ingests, and a player who gets hurt mid-game can still have
+    outscored their projection before leaving (a big first half, then done
+    for the day) — so there's no points-based signal that reliably catches
+    it either way. scripts/prepare_weekly_recap.py's step-2 instructions
+    require a live web-search injury check for each matchup's featured
+    players as part of hand-writing narratives — that's the actual fix,
+    procedural rather than computed here.
     """
     started = [row for row in team_box_scores if row["slot_name"] not in STARTED_EXCLUDED_SLOTS]
     results = []
@@ -401,6 +422,7 @@ def performance_vs_projection(team_box_scores: list[dict], big_game_threshold: f
                 "projected_points": projected,
                 "delta": delta,
                 "tag": "over" if delta > 0 else "under",
+                "is_rookie": bool(row.get("is_rookie")),
             }
         )
     return sorted(results, key=lambda p: abs(p["delta"]), reverse=True)
@@ -457,7 +479,33 @@ def narrative_brief(matchup_details_list: list[dict]) -> list[dict]:
     'is_matchup_of_the_week', 'top_players_a', 'top_players_b',
     'surprises_a', 'surprises_b'} — deliberately flat and narrow so the
     writer isn't paging through score_by_checkpoint noise to find the two
-    or three things actually worth narrating.
+    or three things actually worth narrating. Every player entry (in both
+    top_players_* and surprises_*) carries is_rookie — check it before
+    calling anyone a "rookie"; a second-year-or-later player described as
+    one is a real, recurring mistake, not a hypothetical.
+
+    STYLE GUIDE for what gets hand-written from this brief (Keith's
+    explicit call, modeled on Yahoo's own AI matchup recaps — see
+    DECISIONS.md): each matchup gets a {'headline', 'body'} pair (see
+    apply_narratives), matching Yahoo's actual format:
+
+    - headline: one punchy, punny line built from the teams'/players'
+      actual names — Yahoo's own examples: "American Njigba Warrior Makes
+      The Vinegar Strokes Look Like a D- Student!", "Asian Frittata Scores
+      Big, Lucky Just Scores!". Lean on the team names themselves (TAMS
+      owners already have colorful team names) and a standout player's
+      name/stat line.
+    - body: full Yahoo-caliber snark — sarcastic similes and comparisons
+      ("like watching a high-speed chase where one team is in a sports car
+      and the other is on a tricycle," "about as useful as a screen door
+      on a submarine," "like a chocolate teapot"), needling the losing
+      side directly, and citing the actual over/under-projection numbers
+      (top_players_*/surprises_* give real deltas — use them, don't
+      invent stat-sounding flavor). Full trash-talk energy, not gentle
+      ribbing — Keith asked to match Yahoo's tone, not soften it.
+    - Explicitly OUT per Keith: no letter grades (A+/D- style report-card
+      gimmick) and no closing tease/rhetorical question about next week —
+      end the body once this week's story is told, nothing forward-looking.
 
     This is what scripts/prepare_weekly_recap.py dumps to disk as this
     week's "brief": recap_html.py/recap_data.py have no model access, so the
@@ -486,27 +534,46 @@ def narrative_brief(matchup_details_list: list[dict]) -> list[dict]:
     ]
 
 
-def apply_narratives(matchup_details_list: list[dict], narratives: dict[str, str]) -> list[dict]:
+def apply_narratives(matchup_details_list: list[dict], narratives: dict[str, dict | str]) -> list[dict]:
     """Merges hand-written narrative text (keyed by narrative_key — see
-    narrative_brief) back onto matchup_details' output, ready for
-    recap_html.py to render. A matchup with no matching key (narration
-    step skipped, or a matchup added after the brief was written) keeps
-    whatever 'narrative' it already had, if any, rather than erroring —
-    a recap that's missing one narrative paragraph is a degraded recap,
-    not a broken one, so this never blocks the render+send step."""
-    return [
-        {
-            **m,
-            "narrative": narratives.get(
-                narrative_key(m["team_a"]["team_id"], m["team_b"]["team_id"]), m.get("narrative")
-            ),
-        }
-        for m in matchup_details_list
-    ]
+    narrative_brief) back onto matchup_details' output as 'narrative_headline'
+    and 'narrative', ready for recap_html.py to render. Each narratives
+    value is {'headline': str, 'body': str} (see narrative_brief's style
+    guide) — a plain string is also accepted, treated as body-only with no
+    headline, for backward compatibility with an older narratives file
+    written before headlines existed.
+
+    A matchup with no matching key (narration step skipped, or a matchup
+    added after the brief was written) keeps whatever narrative_headline/
+    narrative it already had, if any, rather than erroring — a recap
+    that's missing one narrative is a degraded recap, not a broken one, so
+    this never blocks the render+send step.
+    """
+    def merge_one(m: dict) -> dict:
+        entry = narratives.get(narrative_key(m["team_a"]["team_id"], m["team_b"]["team_id"]))
+        if entry is None:
+            return {**m, "narrative_headline": m.get("narrative_headline"), "narrative": m.get("narrative")}
+        if isinstance(entry, str):
+            return {**m, "narrative_headline": m.get("narrative_headline"), "narrative": entry}
+        return {**m, "narrative_headline": entry.get("headline"), "narrative": entry.get("body")}
+
+    return [merge_one(m) for m in matchup_details_list]
 
 
 STANDING_GAP_CLOSE = 2  # a matchup's two teams count as "close in the standings" if their ranks are within this many spots of each other
 PLAYOFF_BUBBLE_LOW, PLAYOFF_BUBBLE_HIGH = 15.0, 85.0  # ESPN playoff_pct band that still counts as genuinely in doubt
+
+# This league's fantasy playoffs run weeks 15-17 (see nfl_team_playoff_sos/
+# implied_tt_playoffs elsewhere in this project, which use the same weeks
+# 15-17 convention) — so the regular season is weeks 1-14.
+REGULAR_SEASON_END_WEEK = 14
+# Early in the season, ESPN's simulation-based playoff_pct hasn't
+# differentiated teams yet — nearly every team lands in the "still in doubt"
+# 15-85% band by sheer sample-size noise, which would tag every single
+# upcoming matchup as a playoff bubble game and make the label meaningless.
+# Only the stretch run (this league's last 4 regular-season weeks) is when a
+# real playoff race is actually being decided — see next_week_preview.
+PLAYOFF_BUBBLE_START_WEEK = REGULAR_SEASON_END_WEEK - 3
 
 
 def team_standings(teams: list[dict]) -> list[dict]:
@@ -564,6 +631,7 @@ def next_week_preview(
     next_week_pairs: list[tuple[int, int]],
     projected_scores: dict[int, float],
     owner_meta: dict[int, dict] | None = None,
+    week: int | None = None,
 ) -> list[dict]:
     """Builds the recap's "matchups to watch next week" list — one entry per
     upcoming matchup: {team_a, team_b, tags}, each side carrying its
@@ -574,6 +642,13 @@ def next_week_preview(
     - 'standings_battle': ranks within STANDING_GAP_CLOSE of each other
     - 'playoff_bubble': either side's ESPN playoff_pct is still genuinely in
       doubt (between PLAYOFF_BUBBLE_LOW/HIGH) — not already a lock in or out
+      — AND `week` (the upcoming week being previewed) is at or past
+      PLAYOFF_BUBBLE_START_WEEK. Early in the season ESPN's simulated
+      playoff_pct hasn't differentiated teams yet, so almost every team
+      lands in that "in doubt" band purely from small sample size — without
+      a week gate, that tags nearly every matchup all season, which makes
+      the label meaningless. `week=None` (caller didn't pass one) never
+      tags playoff_bubble, same as being too early.
     - 'high_scoring': both sides' projected_score is at or above the
       average projected score across every team with one available that
       week — "high" is relative to this league's own scoring settings that
@@ -607,8 +682,9 @@ def next_week_preview(
 
         a_pct = a_stand.get("playoff_pct") if a_stand else None
         b_pct = b_stand.get("playoff_pct") if b_stand else None
-        if (a_pct is not None and PLAYOFF_BUBBLE_LOW <= a_pct <= PLAYOFF_BUBBLE_HIGH) or (
-            b_pct is not None and PLAYOFF_BUBBLE_LOW <= b_pct <= PLAYOFF_BUBBLE_HIGH
+        if week is not None and week >= PLAYOFF_BUBBLE_START_WEEK and (
+            (a_pct is not None and PLAYOFF_BUBBLE_LOW <= a_pct <= PLAYOFF_BUBBLE_HIGH)
+            or (b_pct is not None and PLAYOFF_BUBBLE_LOW <= b_pct <= PLAYOFF_BUBBLE_HIGH)
         ):
             tags.append("playoff_bubble")
 
@@ -637,19 +713,23 @@ def next_week_preview(
     return sorted(results, key=lambda m: len(m["tags"]), reverse=True)
 
 
-def waiver_wire_difference_makers(
-    free_agent_scores: list[dict], box_scores: list[dict], limit: int = 5
-) -> list[dict]:
-    """The week's top-scoring free agents — {player_id, full_name, position,
-    points, beat_lowest_starter_at_position, lowest_starter_points} — the
-    "you could've picked this guy up" list.
+def waiver_wire_difference_makers(free_agent_scores: list[dict], box_scores: list[dict]) -> list[dict]:
+    """The week's best free-agent outliers relative to their own pre-game
+    projection — the "you could've picked this guy up" list — as
+    {player_id, full_name, position, points, projected_points,
+    points_over_projection}, at most one per position (POSITION_SLOTS
+    order: QB/RB/WR/TE/DST/K).
 
-    Each is compared against the lowest score any team actually started at
-    that position that week (from box_scores), so "this guy put up 24
-    points" comes with a concrete, in-context comparison rather than a bare
-    number — lowest_starter_points is None if nobody started that position
-    at all. free_agent_scores with an empty/unknown position always get
-    lowest_starter_points=None (no fair comparison to make).
+    A free agent only qualifies if their actual score would have beaten the
+    lowest score any team actually started at that position that week (from
+    box_scores) — i.e. someone who genuinely could have cracked a starting
+    lineup, not just anyone who happened to beat their own number. Among
+    qualifying free agents at a position, the one with the biggest
+    points_over_projection (actual minus projected) wins that position's
+    slot. A free_agent_scores row with no projected_points (not yet
+    backfilled, or ESPN had none to give) is skipped — there's no
+    projection to be an outlier against — as is a position nobody started
+    that week (no fair floor to compare against).
     """
     lowest_starter_by_position: dict[str, float] = {}
     for row in box_scores:
@@ -659,18 +739,25 @@ def waiver_wire_difference_makers(
         if position not in lowest_starter_by_position or row["points"] < lowest_starter_by_position[position]:
             lowest_starter_by_position[position] = row["points"]
 
-    top = sorted(free_agent_scores, key=lambda p: p["points"], reverse=True)[:limit]
-    results = []
-    for p in top:
+    best_by_position: dict[str, dict] = {}
+    for p in free_agent_scores:
+        projected = p.get("projected_points")
+        if projected is None:
+            continue
         floor = lowest_starter_by_position.get(p["position"])
-        results.append(
-            {
-                "player_id": p["player_id"],
-                "full_name": p["full_name"],
-                "position": p["position"],
-                "points": p["points"],
-                "beat_lowest_starter_at_position": floor is not None and p["points"] > floor,
-                "lowest_starter_points": floor,
-            }
-        )
-    return results
+        if floor is None or p["points"] <= floor:
+            continue  # wouldn't have cracked a starting lineup at that position
+
+        candidate = {
+            "player_id": p["player_id"],
+            "full_name": p["full_name"],
+            "position": p["position"],
+            "points": p["points"],
+            "projected_points": projected,
+            "points_over_projection": p["points"] - projected,
+        }
+        current_best = best_by_position.get(p["position"])
+        if current_best is None or candidate["points_over_projection"] > current_best["points_over_projection"]:
+            best_by_position[p["position"]] = candidate
+
+    return [best_by_position[position] for position in POSITION_SLOTS if position in best_by_position]

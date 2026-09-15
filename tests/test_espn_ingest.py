@@ -211,6 +211,36 @@ class TestSyncLeague(unittest.TestCase):
         count = self.conn.execute("SELECT COUNT(*) AS c FROM weekly_matchups").fetchone()["c"]
         self.assertEqual(count, 0)
 
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_next_weeks_matchup_synced_proactively(self, *_mocks):
+        # ESPN publishes the whole regular-season schedule upfront, so a
+        # regular in-season sync for week N should also seed week N+1's
+        # pairings — Next Week Preview shouldn't have to wait for someone to
+        # sync again after week N is over.
+        def fake_matchups(espn_league_id, season, week):
+            return [
+                {"platform_team_id": "1", "opponent_platform_team_id": "2"},
+                {"platform_team_id": "2", "opponent_platform_team_id": "1"},
+            ]
+
+        with patch("ffassistant.ingest.espn.espn_api.get_matchups", side_effect=fake_matchups):
+            espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026, week=5)
+
+        rows = self.conn.execute(
+            "SELECT DISTINCT week FROM weekly_matchups WHERE league_id = 1 AND season = 2026 ORDER BY week"
+        ).fetchall()
+        self.assertEqual([r["week"] for r in rows], [5, 6])
+
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_next_week_not_synced_past_the_last_week_of_the_season(self, *_mocks):
+        with patch("ffassistant.ingest.espn.espn_api.get_matchups", return_value=[]) as mock_matchups:
+            espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026, week=17)
+
+        weeks_requested = [call.args[2] for call in mock_matchups.call_args_list]
+        self.assertEqual(weeks_requested, [17])  # no week 18 — LAST_WEEK is 17
+
     @patch("ffassistant.ingest.espn.espn_api.get_matchups", return_value=[])
     @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
@@ -515,6 +545,87 @@ class TestSyncLeague(unittest.TestCase):
         ]
         written = espn_ingest.sync_weekly_matchups(self.conn, league_id=1, espn_league_id=999, season=2025, week=1)
         self.assertEqual(written, 0)
+
+
+class TestSyncFreeAgentScores(unittest.TestCase):
+    def setUp(self):
+        self.conn = make_conn()
+        self.conn.execute(
+            "INSERT INTO leagues (league_id, name, platform, team_count) VALUES (1, 'Test League', 'espn', 2)"
+        )
+        self.conn.commit()
+
+    @patch("ffassistant.ingest.espn.espn_api.get_free_agent_scores")
+    def test_writes_points_and_projected_points(self, mock_free_agents):
+        mock_free_agents.return_value = [
+            {
+                "source_player_id": "301",
+                "full_name": "Waiver Wire Hero",
+                "position": "RB",
+                "nfl_team": "DAL",
+                "points": 22.5,
+                "projected_points": 9.1,
+            },
+            {
+                "source_player_id": "302",
+                "full_name": "No Projection Guy",
+                "position": "WR",
+                "nfl_team": "SF",
+                "points": 4.0,
+                # no projected_points key at all — must not KeyError
+            },
+        ]
+
+        written = espn_ingest.sync_free_agent_scores(self.conn, league_id=1, espn_league_id=999, season=2026, week=1)
+        self.assertEqual(written, 2)
+
+        rows = {
+            r["full_name"]: r
+            for r in self.conn.execute(
+                "SELECT wfa.*, p.full_name FROM weekly_free_agent_scores wfa "
+                "JOIN players p ON p.player_id = wfa.player_id "
+                "WHERE wfa.league_id = 1 AND wfa.season = 2026 AND wfa.week = 1"
+            )
+        }
+        hero = rows["Waiver Wire Hero"]
+        self.assertEqual(hero["points"], 22.5)
+        self.assertEqual(hero["projected_points"], 9.1)
+
+        no_projection = rows["No Projection Guy"]
+        self.assertEqual(no_projection["points"], 4.0)
+        self.assertIsNone(no_projection["projected_points"])
+
+    @patch("ffassistant.ingest.espn.espn_api.get_free_agent_scores")
+    def test_resync_replaces_rather_than_duplicates(self, mock_free_agents):
+        mock_free_agents.return_value = [
+            {
+                "source_player_id": "301",
+                "full_name": "Waiver Wire Hero",
+                "position": "RB",
+                "nfl_team": "DAL",
+                "points": 10.0,
+                "projected_points": 9.1,
+            },
+        ]
+        espn_ingest.sync_free_agent_scores(self.conn, league_id=1, espn_league_id=999, season=2026, week=1)
+
+        mock_free_agents.return_value = [
+            {
+                "source_player_id": "301",
+                "full_name": "Waiver Wire Hero",
+                "position": "RB",
+                "nfl_team": "DAL",
+                "points": 22.5,
+                "projected_points": 9.1,
+            },
+        ]
+        espn_ingest.sync_free_agent_scores(self.conn, league_id=1, espn_league_id=999, season=2026, week=1)
+
+        rows = self.conn.execute(
+            "SELECT * FROM weekly_free_agent_scores WHERE league_id = 1 AND season = 2026 AND week = 1"
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["points"], 22.5)
 
 
 if __name__ == "__main__":
