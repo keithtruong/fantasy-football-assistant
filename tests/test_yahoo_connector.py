@@ -64,6 +64,14 @@ class TestGetTeams(unittest.TestCase):
         league.teams.return_value = {
             "461.l.656302.t.5": {"team_id": "5", "name": "Long Balls", "waiver_priority": 9},
         }
+        league.standings.return_value = [
+            {
+                "team_key": "461.l.656302.t.5",
+                "outcome_totals": {"wins": 1, "losses": 0, "ties": 0},
+                "points_for": "135.3",
+                "points_against": "92.18",
+            }
+        ]
 
         team_obj = MagicMock()
         team_obj.roster.return_value = [
@@ -107,6 +115,10 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(team["platform_team_id"], "5")
         self.assertEqual(team["team_name"], "Long Balls")
         self.assertEqual(team["waiver_priority"], 9)
+        self.assertEqual(team["wins"], 1)
+        self.assertEqual(team["losses"], 0)
+        self.assertEqual(team["points_for"], 135.3)
+        self.assertEqual(team["points_against"], 92.18)
         self.assertEqual(len(team["players"]), 3)
 
         purdy, lions, wilson = team["players"]
@@ -120,6 +132,30 @@ class TestGetTeams(unittest.TestCase):
         # injury status, which comes from the separate 'status' field.
         self.assertEqual(wilson["injury_status"], "questionable")
         self.assertEqual(wilson["position"], "WR")
+
+    @patch("ffassistant.connectors.yahoo._connect")
+    def test_guillotine_style_standings_has_no_outcome_totals_or_points_against(self, mock_connect):
+        # A Guillotine league has no head-to-head record to track (lowest
+        # scorer is eliminated each week) — its standings() entries carry
+        # points_for but no "outcome_totals"/"points_against" at all.
+        league = MagicMock()
+        league.teams.return_value = {
+            "470.l.124095.t.4": {"team_id": "4", "name": "The Guillo-team", "waiver_priority": None},
+        }
+        league.standings.return_value = [
+            {"team_key": "470.l.124095.t.4", "name": "The Guillo-team", "points_for": "92.18"},
+        ]
+        league.to_team.return_value.roster.return_value = []
+        league.player_details.return_value = []
+        mock_connect.return_value = league
+
+        teams = yahoo.get_teams("470.l.124095")
+
+        team = teams[0]
+        self.assertIsNone(team["wins"])
+        self.assertIsNone(team["losses"])
+        self.assertEqual(team["points_for"], 92.18)
+        self.assertIsNone(team["points_against"])
 
 
 class TestListLeagueIds(unittest.TestCase):

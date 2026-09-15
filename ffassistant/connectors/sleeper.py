@@ -62,9 +62,22 @@ def get_league_settings(sleeper_league_id: str) -> dict:
     }
 
 
+def _fpts(settings: dict, prefix: str) -> float | None:
+    """Sleeper splits points into a whole-number field and a separate 0-99
+    decimal-cents field (e.g. fpts=135, fpts_decimal=30 -> 135.30) rather than
+    one float — combines them, or None if the whole-number field is absent
+    (observed missing on `fpts_against` for at least one league before any
+    games had a result yet; treated the same as "not synced" elsewhere in
+    this project rather than assumed to mean 0)."""
+    whole = settings.get(prefix)
+    if whole is None:
+        return None
+    return whole + settings.get(f"{prefix}_decimal", 0) / 100
+
+
 def get_teams(sleeper_league_id: str) -> list[dict]:
-    """One entry per team: platform_team_id, team_name, waiver_priority, wins/losses/ties,
-    and its raw player-id list."""
+    """One entry per team: platform_team_id, team_name, waiver_priority,
+    wins/losses/ties, points_for/points_against, and its raw player-id list."""
     users_resp = requests.get(f"{BASE_URL}/league/{sleeper_league_id}/users", timeout=30)
     users_resp.raise_for_status()
     users = {u["user_id"]: u for u in users_resp.json()}
@@ -85,6 +98,8 @@ def get_teams(sleeper_league_id: str) -> list[dict]:
                 "wins": settings.get("wins"),
                 "losses": settings.get("losses"),
                 "ties": settings.get("ties"),
+                "points_for": _fpts(settings, "fpts"),
+                "points_against": _fpts(settings, "fpts_against"),
                 "player_ids": roster.get("players") or [],
             }
         )

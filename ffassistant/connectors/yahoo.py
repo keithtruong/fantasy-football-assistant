@@ -103,15 +103,19 @@ def get_league_settings(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> dict:
 
 
 def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
-    """One entry per team: platform_team_id, team_name, waiver_priority, wins/losses/ties,
-    and resolved roster players.
+    """One entry per team: platform_team_id, team_name, waiver_priority,
+    wins/losses/ties, points_for/points_against, and resolved roster players.
 
-    Wins/losses/ties aren't in teams()'s own metadata — merged in from standings()
-    by team_key, which uses the same keys as teams().
+    Wins/losses/ties/points_for/points_against aren't in teams()'s own
+    metadata — merged in from standings() by team_key, which uses the same
+    keys as teams(). A Guillotine-style league's standings entries have no
+    "outcome_totals"/"points_against" at all (no head-to-head record to have
+    — it's single-elimination-by-lowest-score, not W-L), so those come back
+    None there; points_for is still present and used.
     """
     league = _connect(league_id, oauth_path)
     teams_meta = league.teams()
-    outcomes_by_team_key = {s["team_key"]: s.get("outcome_totals", {}) for s in league.standings()}
+    standings_by_team_key = {s["team_key"]: s for s in league.standings()}
 
     rosters = {team_key: league.to_team(team_key).roster() for team_key in teams_meta}
 
@@ -120,7 +124,10 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
 
     teams = []
     for team_key, meta in teams_meta.items():
-        outcomes = outcomes_by_team_key.get(team_key, {})
+        standing = standings_by_team_key.get(team_key, {})
+        outcomes = standing.get("outcome_totals", {})
+        points_for = standing.get("points_for")
+        points_against = standing.get("points_against")
         teams.append(
             {
                 "platform_team_id": str(meta["team_id"]),
@@ -129,6 +136,8 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
                 "wins": int(outcomes["wins"]) if outcomes.get("wins") is not None else None,
                 "losses": int(outcomes["losses"]) if outcomes.get("losses") is not None else None,
                 "ties": int(outcomes["ties"]) if outcomes.get("ties") is not None else None,
+                "points_for": float(points_for) if points_for is not None else None,
+                "points_against": float(points_against) if points_against is not None else None,
                 "players": [
                     {
                         "source_player_id": str(p["player_id"]),

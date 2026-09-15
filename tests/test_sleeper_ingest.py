@@ -23,7 +23,7 @@ FAKE_SETTINGS = {
 }
 
 FAKE_TEAMS = [
-    {"platform_team_id": "1", "team_name": "Keith's Team", "waiver_priority": 2, "wins": 3, "losses": 1, "ties": 0, "player_ids": ["p1", "p2"]},
+    {"platform_team_id": "1", "team_name": "Keith's Team", "waiver_priority": 2, "wins": 3, "losses": 1, "ties": 0, "points_for": 450.5, "points_against": 400.25, "player_ids": ["p1", "p2"]},
     {"platform_team_id": "2", "team_name": "Rival Team", "waiver_priority": 1, "wins": 1, "losses": 3, "ties": 0, "player_ids": ["p3"]},
 ]
 
@@ -103,6 +103,20 @@ class TestSyncLeague(unittest.TestCase):
             for r in self.conn.execute("SELECT * FROM teams")
         }
         self.assertEqual(records, {"1": (3, 1, 0), "2": (1, 3, 0)})
+
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.sleeper.sleeper_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_points_for_and_against_synced(self, *_mocks):
+        sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
+
+        team = self.conn.execute("SELECT * FROM teams WHERE platform_team_id = '1'").fetchone()
+        self.assertEqual(team["points_for"], 450.5)
+        self.assertEqual(team["points_against"], 400.25)
+
+        # The other fixture team has no points_for/points_against key at all -> stays NULL, not 0.
+        rival = self.conn.execute("SELECT * FROM teams WHERE platform_team_id = '2'").fetchone()
+        self.assertIsNone(rival["points_for"])
+        self.assertIsNone(rival["points_against"])
 
     @patch(
         "ffassistant.ingest.sleeper.sleeper_api.get_matchups",

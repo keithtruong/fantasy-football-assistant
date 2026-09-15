@@ -53,11 +53,13 @@ def _sync_teams_and_rosters(
     team_id_by_platform_id = {}
     for team in teams:
         row = conn.execute(
-            "INSERT INTO teams (league_id, platform_team_id, team_name, waiver_priority, wins, losses, ties) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO teams (league_id, platform_team_id, team_name, waiver_priority, wins, losses, ties, "
+            "points_for, points_against) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (league_id, platform_team_id) DO UPDATE SET "
             "team_name = excluded.team_name, waiver_priority = excluded.waiver_priority, "
-            "wins = excluded.wins, losses = excluded.losses, ties = excluded.ties "
+            "wins = excluded.wins, losses = excluded.losses, ties = excluded.ties, "
+            "points_for = excluded.points_for, points_against = excluded.points_against "
             "RETURNING team_id",
             (
                 league_id,
@@ -67,6 +69,8 @@ def _sync_teams_and_rosters(
                 team["wins"],
                 team["losses"],
                 team["ties"],
+                team.get("points_for"),
+                team.get("points_against"),
             ),
         ).fetchone()
         team_id = row["team_id"]

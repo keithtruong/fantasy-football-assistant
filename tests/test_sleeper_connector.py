@@ -44,7 +44,21 @@ class TestGetTeams(unittest.TestCase):
             {"user_id": "u2", "display_name": "Bob"},
         ]
         rosters = [
-            {"roster_id": 1, "owner_id": "u1", "players": ["1234", "5678"], "settings": {"waiver_position": 3}},
+            {
+                "roster_id": 1,
+                "owner_id": "u1",
+                "players": ["1234", "5678"],
+                "settings": {
+                    "waiver_position": 3,
+                    "wins": 1,
+                    "losses": 0,
+                    "fpts": 135,
+                    "fpts_decimal": 30,
+                    "fpts_against": 92,
+                    "fpts_against_decimal": 18,
+                },
+            },
+            # No fpts_against at all yet (observed before any result exists) -> None, not 0.
             {"roster_id": 2, "owner_id": "u2", "players": ["9999"], "settings": {"waiver_position": 1}},
         ]
         mock_get.side_effect = lambda url, timeout: FakeResponse(users if url.endswith("/users") else rosters)
@@ -56,8 +70,12 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(teams[0]["team_name"], "Keith's Team")
         self.assertEqual(teams[0]["waiver_priority"], 3)
         self.assertEqual(teams[0]["player_ids"], ["1234", "5678"])
+        self.assertEqual(teams[0]["points_for"], 135.30)
+        self.assertEqual(teams[0]["points_against"], 92.18)
         # No team_name in metadata -> falls back to display_name.
         self.assertEqual(teams[1]["team_name"], "Bob")
+        self.assertIsNone(teams[1]["points_for"])
+        self.assertIsNone(teams[1]["points_against"])
 
 
 class TestGetRosterPlayers(unittest.TestCase):

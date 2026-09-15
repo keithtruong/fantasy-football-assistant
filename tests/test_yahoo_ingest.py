@@ -30,6 +30,8 @@ FAKE_TEAMS = [
         "wins": 3,
         "losses": 1,
         "ties": 0,
+        "points_for": 450.5,
+        "points_against": 400.25,
         "players": [
             {
                 "source_player_id": "34218",
@@ -133,6 +135,20 @@ class TestSyncLeague(unittest.TestCase):
             for r in self.conn.execute("SELECT * FROM teams")
         }
         self.assertEqual(records, {"5": (3, 1, 0), "6": (1, 3, 0)})
+
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.yahoo.yahoo_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_points_for_and_against_synced(self, *_mocks):
+        yahoo_ingest.sync_league(self.conn, league_id=1, yahoo_league_id="461.l.656302", season=2025)
+
+        team = self.conn.execute("SELECT * FROM teams WHERE platform_team_id = '5'").fetchone()
+        self.assertEqual(team["points_for"], 450.5)
+        self.assertEqual(team["points_against"], 400.25)
+
+        # The other fixture team has no points_for/points_against key at all -> stays NULL, not 0.
+        rival = self.conn.execute("SELECT * FROM teams WHERE platform_team_id = '6'").fetchone()
+        self.assertIsNone(rival["points_for"])
+        self.assertIsNone(rival["points_against"])
 
     @patch(
         "ffassistant.ingest.yahoo.yahoo_api.get_matchups",
