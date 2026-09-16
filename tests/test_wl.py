@@ -2,7 +2,13 @@ import sqlite3
 import unittest
 from pathlib import Path
 
-from ffassistant.wl import autofill_from_platform_sync, derive_outcome, upsert_guillotine_week, upsert_matchup
+from ffassistant.wl import (
+    autofill_from_platform_sync,
+    derive_outcome,
+    sync_league_season_record,
+    upsert_guillotine_week,
+    upsert_matchup,
+)
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "ffassistant" / "schema.sql"
 
@@ -44,6 +50,47 @@ class TestUpsertMatchup(unittest.TestCase):
         rows = self.conn.execute("SELECT * FROM matchups WHERE league_history_id = 1").fetchall()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["outcome"], "L")
+
+
+class TestSyncLeagueSeasonRecord(unittest.TestCase):
+    def setUp(self):
+        self.conn = make_conn()
+        self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC1')")
+        self.conn.commit()
+
+    def test_creates_row_from_matchups_leaving_payout_fields_null(self):
+        upsert_matchup(self.conn, 1, 2026, 1, 120.0, 100.0)  # W
+        upsert_matchup(self.conn, 1, 2026, 2, 90.0, 100.0)  # L
+
+        row = sync_league_season_record(self.conn, 1, 2026)
+
+        self.assertEqual(row, {"league_history_id": 1, "season": 2026, "wins": 1, "losses": 1, "ties": 0})
+        stored = self.conn.execute(
+            "SELECT * FROM league_seasons WHERE league_history_id = 1 AND season = 2026"
+        ).fetchone()
+        self.assertIsNone(stored["buy_in"])
+        self.assertIsNone(stored["finish_position"])
+
+    def test_updates_wins_without_clobbering_buy_in_or_finish(self):
+        self.conn.execute(
+            "INSERT INTO league_seasons (league_history_id, season, wins, losses, ties, buy_in, finish_position) "
+            "VALUES (1, 2026, 0, 0, 0, 50, 3)"
+        )
+        self.conn.commit()
+        upsert_matchup(self.conn, 1, 2026, 1, 120.0, 100.0)  # W
+
+        sync_league_season_record(self.conn, 1, 2026)
+
+        stored = self.conn.execute(
+            "SELECT * FROM league_seasons WHERE league_history_id = 1 AND season = 2026"
+        ).fetchone()
+        self.assertEqual(stored["wins"], 1)
+        self.assertEqual(stored["buy_in"], 50)
+        self.assertEqual(stored["finish_position"], 3)
+
+    def test_no_matchups_yields_zeroed_record(self):
+        row = sync_league_season_record(self.conn, 1, 2026)
+        self.assertEqual(row, {"league_history_id": 1, "season": 2026, "wins": 0, "losses": 0, "ties": 0})
 
 
 class TestUpsertGuillotineWeek(unittest.TestCase):

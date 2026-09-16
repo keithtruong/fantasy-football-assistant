@@ -27,7 +27,7 @@ from ffassistant.db import get_connection
 from ffassistant.guillotine import sync_and_fill_week
 from ffassistant.refresh import LOG_PATH, run_rosters_only_refresh
 from ffassistant.season import FIRST_WEEK, smart_current_week
-from ffassistant.wl import autofill_from_platform_sync
+from ffassistant.wl import autofill_from_platform_sync, sync_league_season_record
 
 _STATUS_LABELS = {
     "not_final_yet": "not final yet on the platform",
@@ -88,6 +88,14 @@ def main(argv=None):
                 lines.append(f"  {r['league_history_name']}: {r['rank']} of {r['remaining_count']} — {r['points_for']} pts")
             else:
                 lines.append(f"  {r['league_history_name']}: SKIPPED — {_STATUS_LABELS.get(r['status'], r['status'])}")
+
+    # Keeps the Leagues tab's W/L/T current every week, same way matchups
+    # already gets refreshed above — league_seasons is a separate table
+    # (buy-in/payout/finish live there too), not derived at read time.
+    history_rows = conn.execute("SELECT league_history_id, name FROM league_history WHERE active = 1").fetchall()
+    for history in history_rows:
+        sync_league_season_record(conn, history["league_history_id"], season)
+    lines.append(f"Synced league_seasons W/L/T for {len(history_rows)} leagues")
 
     output = "\n".join(lines)
     print(output)

@@ -88,6 +88,46 @@ def upsert_guillotine_week(
     }
 
 
+def sync_league_season_record(conn: sqlite3.Connection, league_history_id: int, season: int) -> dict:
+    """Keeps a league_seasons row's wins/losses/ties in sync with matchups
+    for (league_history_id, season) — creates the row if it doesn't exist
+    yet (buy_in/max_payout/actual_payout/finish_position all start NULL,
+    Keith's own to fill in by hand — see CLAUDE.md's W-L tracking design) or
+    updates just wins/losses/ties on an existing row, leaving those other
+    columns untouched. A Guillotine-format league has no matchups rows at
+    all (see guillotine_weeks instead), so this naturally leaves it at
+    0/0/0 — same convention as its already-imported past seasons — without
+    needing to special-case the format here.
+    """
+    totals = conn.execute(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN outcome = 'W' THEN 1 ELSE 0 END), 0) AS wins,
+            COALESCE(SUM(CASE WHEN outcome = 'L' THEN 1 ELSE 0 END), 0) AS losses,
+            COALESCE(SUM(CASE WHEN outcome = 'T' THEN 1 ELSE 0 END), 0) AS ties
+        FROM matchups WHERE league_history_id = ? AND season = ?
+        """,
+        (league_history_id, season),
+    ).fetchone()
+    conn.execute(
+        """
+        INSERT INTO league_seasons (league_history_id, season, wins, losses, ties)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (league_history_id, season) DO UPDATE SET
+            wins = excluded.wins, losses = excluded.losses, ties = excluded.ties
+        """,
+        (league_history_id, season, totals["wins"], totals["losses"], totals["ties"]),
+    )
+    conn.commit()
+    return {
+        "league_history_id": league_history_id,
+        "season": season,
+        "wins": totals["wins"],
+        "losses": totals["losses"],
+        "ties": totals["ties"],
+    }
+
+
 def autofill_from_platform_sync(conn: sqlite3.Connection, season: int, week: int) -> list[dict]:
     """Fills in a week's matchups rows for every active league_history entry
     that has a same-season platform league synced with a real result for
