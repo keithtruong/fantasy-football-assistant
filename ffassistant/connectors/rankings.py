@@ -147,27 +147,38 @@ def get_draft_rankings(scoring_format: str) -> list[dict]:
     return rankings
 
 
-def get_ros_rankings(scoring_format: str) -> list[dict]:
-    """Fetch the rest-of-season Top-N for one scoring format (see .rankings_config.json's
-    ros_urls keys). Not live/verified against the real provider page yet — built as the
-    same cookie-gated, embedded-JSON pattern as get_draft_rankings (the closest existing
-    analog) since that's the provider's page family this content most likely belongs to.
-    If the real page turns out to use a different shape, only this function and the
-    ros_urls config key should need to change — sync_ros_rankings and everything above
-    it in the call chain are format-agnostic.
+# The ROS page publishes only two flavors — confirmed live, unlike the draft
+# Top-300's full four-way PPR breakdown — both embedded in the SAME fetch and
+# tagged per row by a 'site' field. The URL's own '?site=' query parameter
+# only picks which tab the page shows first; it doesn't change what's
+# embedded, so one fetch (see .rankings_config.json's ros_url) covers both.
+_ROS_SITE_LABELS = {"half_ppr": "Half-PPR (1-QB)", "superflex": "Half-PPR (2-QB)"}
 
-    Returns a list of dicts: full_name, position, nfl_team, rank.
+
+def get_ros_rankings(scoring_format: str) -> list[dict]:
+    """Fetch the rest-of-season rankings for one scoring format (half_ppr or
+    superflex only — see _ROS_SITE_LABELS and .rankings_config.json's
+    ros_url). Confirmed live against the real provider page.
+
+    Returns a list of dicts: full_name, position, nfl_team, rank, position_rank.
     """
+    site_label = _ROS_SITE_LABELS.get(scoring_format)
+    if site_label is None:
+        raise ValueError(
+            f"ROS rankings are only published for {sorted(_ROS_SITE_LABELS)} — got {scoring_format!r}"
+        )
+
     config = get_rankings_config()
-    url = config["ros_urls"][scoring_format]
-    text = _fetch_with_cookie(url)
+    text = _fetch_with_cookie(config["ros_url"])
 
     rows = _extract_rows(text)
 
     rankings = []
     for row in rows:
+        if row.get("site") != site_label:
+            continue
         player = row.get("player")
-        rank = row.get("etrRank")
+        rank = row.get("rank")
         if not player or rank in (None, ""):
             continue
         rankings.append(
@@ -176,6 +187,7 @@ def get_ros_rankings(scoring_format: str) -> list[dict]:
                 "position": (row.get("position") or "").upper() or None,
                 "nfl_team": (row.get("team") or "").upper() or None,
                 "rank": int(rank),
+                "position_rank": row.get("posRank") or None,
             }
         )
     return rankings

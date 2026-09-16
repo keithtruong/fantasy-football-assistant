@@ -57,6 +57,22 @@ def derive_scoring_format(db, league_id) -> str:
     return derive_reception_scoring(db, league_id)
 
 
+def derive_ros_scoring_format(db, league_id) -> str:
+    """half_ppr or superflex — the only two flavors the ROS rankings are
+    published in (see ffassistant.connectors.rankings.get_ros_rankings),
+    unlike the draft Top-300's full four-way PPR breakdown. A superflex
+    league (same SUPER_FLEX-slot check as derive_scoring_format) gets
+    'superflex'; every other league gets 'half_ppr' regardless of its own
+    actual reception scoring — there's no finer PPR granularity to derive
+    since the provider doesn't publish one for ROS.
+    """
+    superflex = db.execute(
+        "SELECT 1 FROM roster_slots WHERE league_id = ? AND slot_name = 'SUPER_FLEX' AND slot_count > 0",
+        (league_id,),
+    ).fetchone()
+    return "superflex" if superflex else "half_ppr"
+
+
 @leagues_bp.get("")
 def list_leagues():
     db = get_db()

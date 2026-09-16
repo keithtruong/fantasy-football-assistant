@@ -65,6 +65,63 @@ class TestGetDraftRankings(unittest.TestCase):
         self.assertEqual(kwargs["cookies"], {"session_name": "abc123"})
 
 
+# Real field names confirmed against the live page — different from the
+# draft Top-300's rows (rank/posRank here, not etrRank/posRankEtr, and no
+# adp), plus a 'site' field distinguishing the two formats mixed together
+# in one payload.
+FAKE_ROS_ROWS = [
+    {"player": "Jahmyr Gibbs", "position": "rb", "team": "det", "rank": 1, "posRank": "RB01", "site": "Half-PPR (1-QB)"},
+    {"player": "Josh Allen", "position": "qb", "team": "buf", "rank": 33, "posRank": "QB01", "site": "Half-PPR (1-QB)"},
+    {"player": "No Rank Guy", "position": "wr", "team": "nyj", "rank": None, "posRank": None, "site": "Half-PPR (1-QB)"},
+    {"player": "Jahmyr Gibbs", "position": "rb", "team": "det", "rank": 1, "posRank": "RB01", "site": "Half-PPR (2-QB)"},
+    {"player": "Josh Allen", "position": "qb", "team": "buf", "rank": 2, "posRank": "QB01", "site": "Half-PPR (2-QB)"},
+]
+
+
+class TestGetRosRankings(unittest.TestCase):
+    @patch("ffassistant.connectors.rankings.get_rankings_config")
+    @patch("ffassistant.connectors.rankings.requests.get")
+    def test_filters_to_the_requested_format_by_site_field(self, mock_get, mock_config):
+        mock_config.return_value = {"cookie": "session_name=abc123", "ros_url": "https://example.invalid/ros"}
+        mock_response = MagicMock()
+        mock_response.content = make_page_html(FAKE_ROS_ROWS).encode("utf-8")
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = rankings.get_ros_rankings("half_ppr")
+
+        # The unranked row and the superflex-only rows are excluded.
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["full_name"], "Jahmyr Gibbs")
+        self.assertEqual(result[0]["rank"], 1)
+        self.assertEqual(result[1]["full_name"], "Josh Allen")
+        self.assertEqual(result[1]["rank"], 33)
+
+    @patch("ffassistant.connectors.rankings.get_rankings_config")
+    @patch("ffassistant.connectors.rankings.requests.get")
+    def test_superflex_pulls_the_other_site_value_from_the_same_payload(self, mock_get, mock_config):
+        mock_config.return_value = {"cookie": "session_name=abc123", "ros_url": "https://example.invalid/ros"}
+        mock_response = MagicMock()
+        mock_response.content = make_page_html(FAKE_ROS_ROWS).encode("utf-8")
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = rankings.get_ros_rankings("superflex")
+
+        self.assertEqual(len(result), 2)
+        josh_allen = next(r for r in result if r["full_name"] == "Josh Allen")
+        self.assertEqual(josh_allen["rank"], 2)  # QB ranked much higher under superflex
+
+        # One fetch covers both formats -- no separate URL/request needed.
+        mock_get.assert_called_once()
+
+    def test_rejects_unpublished_formats(self):
+        with self.assertRaises(ValueError):
+            rankings.get_ros_rankings("full_ppr")
+        with self.assertRaises(ValueError):
+            rankings.get_ros_rankings("non_ppr")
+
+
 FAKE_WEEKLY_PAYLOAD = {
     "expert_id": "534",
     "type": "Weekly Half PPR",

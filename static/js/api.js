@@ -135,14 +135,18 @@ export const api = {
     }),
   getWeeklyRankingsSyncStatus: (season, week, leagueId) =>
     request(`/api/rankings/sync_status_weekly?season=${season}&week=${week}&league_id=${leagueId}`),
-  syncRosRankings: (season, scoringFormat) =>
+  // league_id, not scoring_format: ROS only has half_ppr/superflex (no
+  // full_ppr/non_ppr versions exist), so the server resolves the right one
+  // of those two from this league's own settings — same reasoning as
+  // syncWeeklyRankings above.
+  syncRosRankings: (season, leagueId) =>
     request("/api/rankings/sync_ros", {
       method: "POST",
       headers: JSON_HEADERS,
-      body: JSON.stringify({ season, scoring_format: scoringFormat }),
+      body: JSON.stringify({ season, league_id: leagueId }),
     }),
-  getRosRankingsSyncStatus: (season, scoringFormat) =>
-    request(`/api/rankings/sync_status_ros?season=${season}&scoring_format=${scoringFormat}`),
+  getRosRankingsSyncStatus: (season, leagueId) =>
+    request(`/api/rankings/sync_status_ros?season=${season}&league_id=${leagueId}`),
   getSeason: (season) => request(`/api/season/${season}`),
   setSeasonWeek1: (season, week1StartDate) =>
     request(`/api/season/${season}`, {

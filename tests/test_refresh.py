@@ -70,7 +70,7 @@ class TestRefresh(unittest.TestCase):
         self.assertEqual(mock_weekly.call_count, len(refresh.WEEKLY_SCORING_FORMATS))
         for scoring_format in refresh.WEEKLY_SCORING_FORMATS:
             mock_weekly.assert_any_call(self.conn, 2026, 3, scoring_format)
-        self.assertEqual(mock_ros.call_count, len(refresh.SCORING_FORMATS))
+        self.assertEqual(mock_ros.call_count, len(refresh.ROS_SCORING_FORMATS))
 
     @patch("ffassistant.season._fetch_live_week", return_value=None)
     @patch("ffassistant.ingest.sleeper.sync_league")
@@ -97,8 +97,8 @@ class TestRefresh(unittest.TestCase):
     def test_run_full_refresh_flags_failure_when_anything_fails(self, _mock_ros, _mock_weekly, _mock_news, _mock_sleeper):
         summary = refresh.run_full_refresh(self.conn, season=2026, week=1)
         self.assertTrue(summary["had_failure"])
-        self.assertEqual(len(summary["ros"]["errors"]), len(refresh.SCORING_FORMATS))
-        self.assertIn("full_ppr: cookie expired", summary["ros"]["errors"])
+        self.assertEqual(len(summary["ros"]["errors"]), len(refresh.ROS_SCORING_FORMATS))
+        self.assertIn("half_ppr: cookie expired", summary["ros"]["errors"])
 
     @patch("ffassistant.ingest.sleeper.sync_league")
     @patch.object(

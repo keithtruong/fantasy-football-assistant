@@ -249,7 +249,7 @@ async function refreshWeeklySyncStatus() {
 
 async function refreshRosSyncStatus() {
   try {
-    const status = await api.getRosRankingsSyncStatus(state.season, state.scoringFormat);
+    const status = await api.getRosRankingsSyncStatus(state.season, state.leagueId);
     rosRankingsSyncStatus.textContent = formatSyncedAt(status.synced_at);
     rosRankingsSyncStatus.className = "rankings-sync-status";
   } catch {
@@ -458,7 +458,7 @@ function init() {
     rosRankingsSyncStatus.textContent = "Refreshing…";
     rosRankingsSyncStatus.className = "rankings-sync-status";
     try {
-      const result = await api.syncRosRankings(state.season, state.scoringFormat);
+      const result = await api.syncRosRankings(state.season, state.leagueId);
       const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
       rosRankingsSyncStatus.textContent =
         `${formatSyncedAt(result.synced_at)} — ${result.player_count} players${unresolvedNote}`;

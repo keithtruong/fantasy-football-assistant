@@ -202,12 +202,14 @@ class TestInSeasonRosView(InSeasonTestCase):
         super().setUp()
         conn = self._connect_for_seeding()
         self._seed_in_season(conn)
-        # ROS rankings: no week, per schema convention. League 1 has no SUPER_FLEX
-        # slot, so derive_scoring_format falls through to reception scoring —
-        # same 'full_ppr' as the weekly rows above (rec=1 in league_scoring).
+        # ROS rankings: no week, per schema convention. League 1 has no
+        # SUPER_FLEX slot, so derive_ros_scoring_format falls through to
+        # 'half_ppr' -- ROS's only non-superflex bucket, regardless of this
+        # league's own actual reception scoring (rec=1/full_ppr above) since
+        # the provider doesn't publish that finer granularity for ROS.
         conn.execute(
             "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
-            "VALUES (5, 'ros', ?, NULL, 'full_ppr', 4)",
+            "VALUES (5, 'ros', ?, NULL, 'half_ppr', 4)",
             (SEASON,),
         )
         conn.commit()

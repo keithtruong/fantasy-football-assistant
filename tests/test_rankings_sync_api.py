@@ -100,12 +100,43 @@ class TestRosRankingsSyncApi(ApiTestCase):
         args, _kwargs = mock_sync.call_args
         self.assertEqual(args[2], "full_ppr")
 
+    @patch("ffassistant.ingest.rankings.sync_ros_rankings")
+    def test_league_id_resolves_half_ppr_for_a_non_superflex_league(self, mock_sync):
+        # ROS only has half_ppr/superflex (see derive_ros_scoring_format) --
+        # league 1 has no SUPER_FLEX slot, so it resolves to half_ppr
+        # regardless of its own actual reception scoring (rec=1/full_ppr).
+        resp = self.client.post("/api/rankings/sync_ros", json={"season": 2026, "league_id": 1})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["scoring_format"], "half_ppr")
+        args, _kwargs = mock_sync.call_args
+        self.assertEqual(args[2], "half_ppr")
+
+    @patch("ffassistant.ingest.rankings.sync_ros_rankings")
+    def test_league_id_resolves_superflex_for_a_superflex_league(self, mock_sync):
+        import sqlite3
+
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO roster_slots (league_id, slot_name, slot_count) VALUES (1, 'SUPER_FLEX', 1)")
+        conn.commit()
+        conn.close()
+
+        resp = self.client.post("/api/rankings/sync_ros", json={"season": 2026, "league_id": 1})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["scoring_format"], "superflex")
+        args, _kwargs = mock_sync.call_args
+        self.assertEqual(args[2], "superflex")
+
 
 class TestRosSyncStatusApi(ApiTestCase):
     def test_null_when_never_synced(self):
         resp = self.client.get("/api/rankings/sync_status_ros?season=2026&scoring_format=full_ppr")
         self.assertEqual(resp.status_code, 200)
         self.assertIsNone(resp.get_json()["synced_at"])
+
+    def test_league_id_resolves_half_ppr_for_a_non_superflex_league(self):
+        resp = self.client.get("/api/rankings/sync_status_ros?season=2026&league_id=1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["scoring_format"], "half_ppr")
 
 
 if __name__ == "__main__":

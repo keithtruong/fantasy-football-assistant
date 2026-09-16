@@ -45,7 +45,7 @@ class TestRefreshAllApi(RefreshLogIsolatedApiTestCase):
         self.assertEqual(data["rosters"]["synced"], 1)
         self.assertEqual(data["rosters"]["total"], 1)
         self.assertEqual(mock_weekly.call_count, 3)  # full_ppr/half_ppr/non_ppr
-        self.assertEqual(mock_ros.call_count, 4)  # + superflex
+        self.assertEqual(mock_ros.call_count, 2)  # half_ppr/superflex only -- see ROS_SCORING_FORMATS
 
     @patch("ffassistant.refresh.sync_player_news_from_file", return_value=_NO_NEWS_STATS)
     @patch("ffassistant.refresh.sync_ros_rankings")

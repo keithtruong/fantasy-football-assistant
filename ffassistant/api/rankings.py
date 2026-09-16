@@ -171,11 +171,28 @@ def get_sync_status_weekly():
 
 @rankings_admin_bp.post("/sync_ros")
 def sync_ros_rankings():
-    """On-demand refresh for the in-season Rest-of-Season tab's rank list."""
+    """On-demand refresh for the in-season Rest-of-Season tab's rank list.
+
+    ROS is only published in two flavors (half_ppr/superflex — see
+    ffassistant.connectors.rankings.get_ros_rankings), unlike the draft
+    board's full four-way PPR breakdown. Pass either `scoring_format`
+    directly or `league_id` to have this resolve the correct one of the two
+    from that league's own settings — same league_id-or-scoring_format
+    convention as /sync_weekly, for the same reason: the frontend's rank
+    list only ever has the draft board's superflex-aware format handy,
+    which isn't one of ROS's two valid values on its own.
+    """
     db = get_db()
     body = request.get_json(silent=True) or {}
     season = int(body.get("season") or datetime.date.today().year)
-    scoring_format = body.get("scoring_format", "full_ppr")
+
+    league_id = body.get("league_id")
+    if league_id is not None:
+        from ffassistant.api.leagues import derive_ros_scoring_format
+
+        scoring_format = derive_ros_scoring_format(db, int(league_id))
+    else:
+        scoring_format = body.get("scoring_format", "full_ppr")
 
     from ffassistant.ingest import rankings as rankings_ingest
     from ffassistant.name_matching import list_unresolved
@@ -196,16 +213,26 @@ def sync_ros_rankings():
             "player_count": player_count,
             "unresolved_count": unresolved_count,
             "synced_at": _last_synced_at(db, "ros", season, scoring_format),
+            "scoring_format": scoring_format,
         }
     )
 
 
 @rankings_admin_bp.get("/sync_status_ros")
 def get_sync_status_ros():
+    """Same league_id-or-scoring_format resolution as GET /sync_status_weekly."""
     db = get_db()
     season = request.args.get("season", type=int) or datetime.date.today().year
-    scoring_format = request.args.get("scoring_format", "full_ppr")
-    return jsonify({"synced_at": _last_synced_at(db, "ros", season, scoring_format)})
+
+    league_id = request.args.get("league_id", type=int)
+    if league_id is not None:
+        from ffassistant.api.leagues import derive_ros_scoring_format
+
+        scoring_format = derive_ros_scoring_format(db, league_id)
+    else:
+        scoring_format = request.args.get("scoring_format", "full_ppr")
+
+    return jsonify({"synced_at": _last_synced_at(db, "ros", season, scoring_format), "scoring_format": scoring_format})
 
 
 def _last_synced_at(db, ranking_type, season, scoring_format):

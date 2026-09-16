@@ -46,11 +46,13 @@ def get_in_season(league_id):
     ranking_type = "weekly" if view == "weekly" else "ros"
 
     # Weekly has no superflex list at all (only reception scoring varies — see
-    # ffassistant.api.leagues.derive_reception_scoring); ROS mirrors the draft
-    # board's full superflex-aware format instead.
-    from ffassistant.api.leagues import derive_reception_scoring, derive_scoring_format
+    # ffassistant.api.leagues.derive_reception_scoring); ROS is superflex-aware
+    # but only comes in two flavors (half_ppr/superflex — see
+    # ffassistant.api.leagues.derive_ros_scoring_format), unlike the draft
+    # board's full four-way PPR breakdown.
+    from ffassistant.api.leagues import derive_reception_scoring, derive_ros_scoring_format
 
-    scoring_format = derive_reception_scoring(db, league_id) if view == "weekly" else derive_scoring_format(db, league_id)
+    scoring_format = derive_reception_scoring(db, league_id) if view == "weekly" else derive_ros_scoring_format(db, league_id)
 
     my_team = db.execute(
         "SELECT team_id, waiver_priority, wins, losses, ties FROM teams WHERE league_id = ? AND is_mine = 1",
@@ -305,7 +307,7 @@ def _rank_filter(ranking_type, week, scoring_format, alias="r"):
     """'ros' rankings never have a week (schema convention, same as 'draft'); only
     'weekly' rows need the week filter. Both need a scoring_format filter, since
     more than one format's rankings can coexist for the same ranking_type/season
-    (e.g. weekly's full_ppr/half_ppr/non_ppr, or ROS's four draft-style buckets).
+    (e.g. weekly's full_ppr/half_ppr/non_ppr, or ROS's half_ppr/superflex).
     list_type IS NULL excludes weekly's two combined FLEX/SUPER_FLEX lists (see
     ffassistant.starters), which share this same key space but aren't meant for
     the plain per-position Rostered/Available views here."""

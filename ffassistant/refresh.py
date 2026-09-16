@@ -23,15 +23,17 @@ from ffassistant.season import smart_current_week
 
 LOG_PATH = REPO_ROOT / "data" / "refresh_log.txt"
 
-# Same four buckets the Draft tool's scoring-format dropdown offers — a
-# whole-league-set refresh doesn't know in advance which formats this
-# season's leagues need, so it covers all of them.
-SCORING_FORMATS = ("full_ppr", "half_ppr", "non_ppr", "superflex")
-
 # Weekly rankings have no superflex list at all (see
 # ffassistant.connectors.rankings._SCORING_CODES) — only reception scoring
-# varies, so this is SCORING_FORMATS minus "superflex".
+# varies. A whole-league-set refresh doesn't know in advance which of these
+# formats this season's leagues need, so it covers all of them.
 WEEKLY_SCORING_FORMATS = ("full_ppr", "half_ppr", "non_ppr")
+
+# ROS rankings are only published in two flavors, confirmed live against the
+# real provider page — no full_ppr/non_ppr versions exist at all (see
+# ffassistant.connectors.rankings.get_ros_rankings/_ROS_SITE_LABELS), unlike
+# the draft board's full four-way PPR breakdown.
+ROS_SCORING_FORMATS = ("half_ppr", "superflex")
 
 
 def refresh_rosters(conn, season, week):
@@ -71,7 +73,7 @@ def refresh_weekly(conn, season, week):
 def refresh_ros(conn, season):
     per_format = {}
     errors = []
-    for scoring_format in SCORING_FORMATS:
+    for scoring_format in ROS_SCORING_FORMATS:
         try:
             sync_ros_rankings(conn, season, scoring_format)
             per_format[scoring_format] = conn.execute(
