@@ -104,6 +104,7 @@ export const api = {
     ),
   getStartersAll: (season, week) => request(`/api/starters_all?season=${season}&week=${week}`),
   getExposure: () => request("/api/exposure"),
+  getStartersExposure: () => request("/api/exposure/starters"),
   getSchedule: (season) => request(`/api/schedule?season=${season}`),
   getWlLeagueHistory: () => request("/api/wl/league_history"),
   getWlGames: (year) => request(`/api/wl/games?year=${year}`),

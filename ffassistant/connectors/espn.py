@@ -23,6 +23,18 @@ def _map_position(espn_position: str | None) -> str | None:
     return POSITION_MAP.get(espn_position, espn_position)
 
 
+def _roster_status(lineup_slot: str | None) -> str:
+    """Collapses ESPN's actual lineupSlot (the real, currently-set lineup
+    position — 'BE' for bench, 'IR' for injured reserve, an actual position
+    code like 'QB'/'RB/WR/TE' otherwise) down to starter/bench/ir. Feeds the
+    Exposure page's Weekly Starters section."""
+    if lineup_slot == "BE":
+        return "bench"
+    if lineup_slot == "IR":
+        return "ir"
+    return "starter"
+
+
 def _connect(league_id: int, year: int, espn_s2: str | None = None, swid: str | None = None):
     from espn_api.football import League  # lazy import — optional heavy dependency
 
@@ -69,7 +81,9 @@ def get_teams(
     Next Week Preview to flag "playoff bubble" matchups without this project
     having to guess a playoff-spot cutoff and recompute tiebreakers itself.
     standing is ESPN's current playoff seed (already tiebreak-resolved), used
-    the same way for "close in the standings."
+    the same way for "close in the standings." Each player's roster_status
+    (starter/bench/ir) is ESPN's real, currently-set lineup slot — see
+    _roster_status.
     """
     league = _connect(league_id, year, espn_s2, swid)
 
@@ -94,6 +108,7 @@ def get_teams(
                         "position": _map_position(player.position),
                         "nfl_team": player.proTeam,
                         "injury_status": player.injuryStatus,
+                        "roster_status": _roster_status(player.lineupSlot),
                     }
                     for player in team.roster
                 ],

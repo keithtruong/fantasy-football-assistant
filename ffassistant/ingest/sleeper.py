@@ -98,12 +98,15 @@ def _sync_teams_and_rosters(
         # Full-snapshot sync: replace roster membership rather than diffing,
         # since we don't have transaction history to attribute adds/drops from yet.
         conn.execute("DELETE FROM roster_spots WHERE team_id = ?", (team_id,))
-        for player_info in sleeper_api.get_roster_players(team["player_ids"], players_lookup):
+        roster_players = sleeper_api.get_roster_players(
+            team["player_ids"], players_lookup, team.get("starters"), team.get("reserve")
+        )
+        for player_info in roster_players:
             player_id = resolve_or_create_player(conn, "sleeper", player_info)
             conn.execute(
-                "INSERT INTO roster_spots (team_id, player_id, acquired_via) VALUES (?, ?, NULL) "
+                "INSERT INTO roster_spots (team_id, player_id, roster_status, acquired_via) VALUES (?, ?, ?, NULL) "
                 "ON CONFLICT (team_id, player_id) DO NOTHING",
-                (team_id, player_id),
+                (team_id, player_id, player_info.get("roster_status")),
             )
             if week is not None:
                 status = _INJURY_STATUS_MAP.get(player_info["injury_status"], "healthy")

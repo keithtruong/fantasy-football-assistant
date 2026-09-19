@@ -29,6 +29,18 @@ _STATUS_MAP = {
 }
 
 
+def _roster_status(selected_position: str | None) -> str:
+    """Collapses Yahoo's actual selected_position (the real, currently-set
+    lineup position — 'BN' for bench, an 'IR'-prefixed code for injured
+    reserve, an actual position/FLEX code otherwise) down to
+    starter/bench/ir. Feeds the Exposure page's Weekly Starters section."""
+    if selected_position == "BN":
+        return "bench"
+    if selected_position and selected_position.startswith("IR"):
+        return "ir"
+    return "starter"
+
+
 def _slugify(display_name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", display_name.lower()).strip("_")
 
@@ -111,7 +123,9 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
     keys as teams(). A Guillotine-style league's standings entries have no
     "outcome_totals"/"points_against" at all (no head-to-head record to have
     — it's single-elimination-by-lowest-score, not W-L), so those come back
-    None there; points_for is still present and used.
+    None there; points_for is still present and used. Each player's
+    roster_status (starter/bench/ir) is Yahoo's real, currently-set lineup
+    position — see _roster_status.
     """
     league = _connect(league_id, oauth_path)
     teams_meta = league.teams()
@@ -145,6 +159,7 @@ def get_teams(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
                         "position": _map_position(p["eligible_positions"]),
                         "nfl_team": nfl_team_by_id.get(p["player_id"]),
                         "injury_status": _map_status(p["status"]),
+                        "roster_status": _roster_status(p.get("selected_position")),
                     }
                     for p in rosters[team_key]
                 ],

@@ -77,7 +77,11 @@ def _fpts(settings: dict, prefix: str) -> float | None:
 
 def get_teams(sleeper_league_id: str) -> list[dict]:
     """One entry per team: platform_team_id, team_name, waiver_priority,
-    wins/losses/ties, points_for/points_against, and its raw player-id list."""
+    wins/losses/ties, points_for/points_against, its raw player-id list, and
+    the raw starters/reserve id lists (see get_roster_players — Sleeper has
+    no per-player slot field like ESPN/Yahoo; it's these two id lists
+    instead, which get_roster_players cross-references to attach each
+    player's roster_status)."""
     users_resp = requests.get(f"{BASE_URL}/league/{sleeper_league_id}/users", timeout=30)
     users_resp.raise_for_status()
     users = {u["user_id"]: u for u in users_resp.json()}
@@ -101,6 +105,8 @@ def get_teams(sleeper_league_id: str) -> list[dict]:
                 "points_for": _fpts(settings, "fpts"),
                 "points_against": _fpts(settings, "fpts_against"),
                 "player_ids": roster.get("players") or [],
+                "starters": roster.get("starters") or [],
+                "reserve": roster.get("reserve") or [],
             }
         )
     return teams
@@ -129,14 +135,30 @@ def get_matchups(sleeper_league_id: str, week: int) -> list[dict]:
     return pairs
 
 
-def get_roster_players(player_ids: list[str], players_lookup: dict) -> list[dict]:
-    """Resolve Sleeper player IDs to structured info (name/position/team) via the cached lookup."""
+def get_roster_players(
+    player_ids: list[str], players_lookup: dict, starters: list[str] | None = None, reserve: list[str] | None = None
+) -> list[dict]:
+    """Resolve Sleeper player IDs to structured info (name/position/team) via
+    the cached lookup. `starters`/`reserve` (from get_teams) are cross-
+    referenced per player_id to set roster_status: reserve wins over starters
+    (a team can't simultaneously start and IR the same player, but check IR
+    first regardless) — 'ir', else 'starter' if in the starters list, else
+    'bench'. Feeds the Exposure page's Weekly Starters section."""
+    starters = set(starters or [])
+    reserve = set(reserve or [])
+
     resolved = []
     for pid in player_ids:
         info = players_lookup.get(pid)
         if not info:
             continue
         full_name = info.get("full_name") or f"{info.get('first_name', '')} {info.get('last_name', '')}".strip()
+        if pid in reserve:
+            roster_status = "ir"
+        elif pid in starters:
+            roster_status = "starter"
+        else:
+            roster_status = "bench"
         resolved.append(
             {
                 "source_player_id": pid,
@@ -144,6 +166,7 @@ def get_roster_players(player_ids: list[str], players_lookup: dict) -> list[dict
                 "position": _map_position(info.get("position")),
                 "nfl_team": info.get("team"),
                 "injury_status": info.get("injury_status"),
+                "roster_status": roster_status,
             }
         )
     return resolved

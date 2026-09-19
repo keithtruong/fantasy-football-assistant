@@ -1,4 +1,5 @@
 import sqlite3
+from unittest.mock import patch
 
 from tests.test_api import ApiTestCase
 
@@ -116,3 +117,125 @@ class TestExposureApi(ApiTestCase):
         self.assertIn("KC", zero_exposure)
         self.assertIn("DAL", zero_exposure)
         self.assertNotIn("BUF", zero_exposure)  # rostered (Josh Allen)
+
+
+class TestStartersExposureApi(TestExposureApi):
+    """Builds on TestExposureApi's two-active-league seed, adding
+    roster_status values and a current-week opponent pairing in league 1."""
+
+    def setUp(self):
+        super().setUp()
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        # League 1 (mine, team 1): Josh Allen starts, Saquon sits on my bench.
+        conn.execute("UPDATE roster_spots SET roster_status = 'starter' WHERE team_id = 1 AND player_id = 1")
+        conn.execute("UPDATE roster_spots SET roster_status = 'bench' WHERE team_id = 1 AND player_id = 2")
+        # League 1's team 2 is my current-week opponent, starting Bijan.
+        conn.execute("INSERT INTO roster_spots (team_id, player_id, roster_status) VALUES (2, 3, 'starter')")
+        conn.execute(
+            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (1, 2026, 3, 1, 2)"
+        )
+        # League 2 (mine, team 5): Saquon starts here -- a different roster_status
+        # per team_id is expected (same player, different team).
+        conn.execute("UPDATE roster_spots SET roster_status = 'starter' WHERE team_id = 5 AND player_id = 2")
+        # Bijan on the rival (non-mine) team 6 in league 2 -- must never count,
+        # won by neither "mine" nor "opponent" (no matchup row involves team 6).
+        conn.execute("UPDATE roster_spots SET roster_status = 'starter' WHERE team_id = 6 AND player_id = 3")
+        conn.commit()
+        conn.close()
+
+    def _get(self):
+        with patch("ffassistant.api.exposure.smart_current_week", return_value=3):
+            return self.client.get("/api/exposure/starters")
+
+    def test_my_starters_excludes_bench(self):
+        resp = self._get()
+        data = resp.get_json()
+        self.assertEqual(data["week"], 3)
+        qb_names = [p["full_name"] for p in data["my_starters_by_position"]["QB"]]
+        self.assertIn("Josh Allen", qb_names)
+
+    def test_my_starters_aggregates_across_leagues_excluding_bench_leagues(self):
+        # Saquon starts on team 5 (League Two) but sits on my bench on team 1
+        # (Test League) -- only the league where he actually started counts.
+        resp = self._get()
+        rbs = resp.get_json()["my_starters_by_position"]["RB"]
+        saquon = next(p for p in rbs if p["full_name"] == "Saquon Barkley")
+        self.assertEqual(saquon["league_count"], 1)
+        self.assertEqual(saquon["leagues"], ["League Two"])
+
+    def test_opponent_starters_come_from_current_week_matchup(self):
+        resp = self._get()
+        rbs = resp.get_json()["opponent_starters_by_position"]["RB"]
+        names = [p["full_name"] for p in rbs]
+        self.assertIn("Bijan Robinson", names)  # team 2's starter, my week-3 opponent
+
+    def test_rival_team_with_no_matchup_row_is_excluded(self):
+        # Team 6 (league 2) starts Bijan too, but has no weekly_matchups row
+        # pairing it with any of my teams -- must not appear as an opponent.
+        resp = self._get()
+        rbs = resp.get_json()["opponent_starters_by_position"]["RB"]
+        bijan = next(p for p in rbs if p["full_name"] == "Bijan Robinson")
+        self.assertEqual(bijan["league_count"], 1)  # only via league 1's matchup, not league 2
+
+    def test_quiet_nfl_teams_excludes_started_teams_but_includes_unrostered(self):
+        resp = self._get()
+        quiet = resp.get_json()["quiet_nfl_teams"]
+        self.assertIn("KC", quiet)
+        self.assertIn("DAL", quiet)
+        self.assertNotIn("BUF", quiet)  # Josh Allen starts for me
+        self.assertNotIn("ATL", quiet)  # Bijan starts for my opponent
+
+    def test_null_week_when_current_week_unresolvable(self):
+        with patch("ffassistant.api.exposure.smart_current_week", return_value=None):
+            resp = self.client.get("/api/exposure/starters")
+        data = resp.get_json()
+        self.assertIsNone(data["week"])
+        # My own starters still resolve fine -- only the opponent side needs a week.
+        qb_names = [p["full_name"] for p in data["my_starters_by_position"]["QB"]]
+        self.assertIn("Josh Allen", qb_names)
+        self.assertEqual(data["opponent_starters_by_position"]["RB"], [])
+
+    def test_by_nfl_team_root_for_when_only_mine(self):
+        resp = self._get()
+        teams = {t["nfl_team"]: t for t in resp.get_json()["starters_by_nfl_team"]}
+        self.assertEqual(teams["BUF"]["verdict"], "root_for")  # Josh Allen, mine only
+        self.assertEqual(teams["BUF"]["my_count"], 1)
+        self.assertEqual(teams["BUF"]["opponent_count"], 0)
+        self.assertEqual([p["full_name"] for p in teams["BUF"]["my_players"]], ["Josh Allen"])
+        self.assertEqual(teams["BUF"]["opponent_players"], [])
+
+    def test_by_nfl_team_mixed_when_both_sides_start_it(self):
+        # A brand-new player/team (not touched by any season-long exposure
+        # fixture) so this test's extra seeding can't bleed into those
+        # assertions: I start a KC player on team 1, my week-3 opponent
+        # (team 2) starts a different KC player -- split rooting interest.
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("INSERT INTO players (player_id, full_name, position, nfl_team) VALUES (4, 'My KC Guy', 'WR', 'KC')")
+        conn.execute("INSERT INTO players (player_id, full_name, position, nfl_team) VALUES (5, 'Their KC Guy', 'WR', 'KC')")
+        conn.execute("INSERT INTO roster_spots (team_id, player_id, roster_status) VALUES (1, 4, 'starter')")
+        conn.execute("INSERT INTO roster_spots (team_id, player_id, roster_status) VALUES (2, 5, 'starter')")
+        conn.commit()
+        conn.close()
+
+        resp = self._get()
+        teams = {t["nfl_team"]: t for t in resp.get_json()["starters_by_nfl_team"]}
+        self.assertEqual(teams["KC"]["verdict"], "mixed")
+        self.assertEqual(teams["KC"]["my_count"], 1)
+        self.assertEqual(teams["KC"]["opponent_count"], 1)
+        self.assertEqual([p["full_name"] for p in teams["KC"]["my_players"]], ["My KC Guy"])
+        self.assertEqual([p["full_name"] for p in teams["KC"]["opponent_players"]], ["Their KC Guy"])
+
+    def test_by_nfl_team_excludes_teams_with_no_starters_either_side(self):
+        resp = self._get()
+        team_names = {t["nfl_team"] for t in resp.get_json()["starters_by_nfl_team"]}
+        self.assertIn("KC", resp.get_json()["quiet_nfl_teams"])
+        self.assertNotIn("KC", team_names)
+
+    def test_by_nfl_team_sorted_by_total_involvement_descending(self):
+        resp = self._get()
+        teams = resp.get_json()["starters_by_nfl_team"]
+        totals = [t["my_count"] + t["opponent_count"] for t in teams]
+        self.assertEqual(totals, sorted(totals, reverse=True))

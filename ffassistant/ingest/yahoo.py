@@ -82,9 +82,9 @@ def _sync_teams_and_rosters(
         for player_info in team["players"]:
             player_id = resolve_or_create_player(conn, "yahoo", player_info)
             conn.execute(
-                "INSERT INTO roster_spots (team_id, player_id, acquired_via) VALUES (?, ?, NULL) "
+                "INSERT INTO roster_spots (team_id, player_id, roster_status, acquired_via) VALUES (?, ?, ?, NULL) "
                 "ON CONFLICT (team_id, player_id) DO NOTHING",
-                (team_id, player_id),
+                (team_id, player_id, player_info.get("roster_status")),
             )
             if week is not None:
                 conn.execute(

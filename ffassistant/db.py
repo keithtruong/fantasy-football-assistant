@@ -92,6 +92,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # Only guillotine-format league on record today.
         conn.execute("UPDATE league_history SET format = 'guillotine' WHERE name = 'Guillotine'")
 
+    roster_spots_columns = {row["name"] for row in conn.execute("PRAGMA table_info(roster_spots)")}
+    if "roster_status" not in roster_spots_columns:
+        conn.execute(
+            "ALTER TABLE roster_spots ADD COLUMN roster_status TEXT "
+            "CHECK (roster_status IS NULL OR roster_status IN ('starter', 'bench', 'ir'))"
+        )
+
     _migrate_leagues_platform_check(conn)
 
 

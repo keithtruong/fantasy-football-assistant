@@ -34,6 +34,7 @@ FAKE_ROSTER_PLAYERS = {
         "position": "WR",
         "nfl_team": "MIN",
         "injury_status": None,
+        "roster_status": "starter",
     },
     "p2": {
         "source_player_id": "p2",
@@ -41,6 +42,7 @@ FAKE_ROSTER_PLAYERS = {
         "position": "RB",
         "nfl_team": "SEA",
         "injury_status": "Questionable",
+        "roster_status": "bench",
     },
     "p3": {
         "source_player_id": "p3",
@@ -48,11 +50,12 @@ FAKE_ROSTER_PLAYERS = {
         "position": "RB",
         "nfl_team": "NYJ",
         "injury_status": "Out",
+        "roster_status": "ir",
     },
 }
 
 
-def fake_get_roster_players(player_ids, players_lookup):
+def fake_get_roster_players(player_ids, players_lookup, starters=None, reserve=None):
     return [FAKE_ROSTER_PLAYERS[pid] for pid in player_ids]
 
 
@@ -260,7 +263,7 @@ class TestSyncLeague(unittest.TestCase):
         }
         with patch(
             "ffassistant.ingest.sleeper.sleeper_api.get_roster_players",
-            side_effect=lambda ids, lookup: [drifted[i] for i in ids],
+            side_effect=lambda ids, lookup, starters=None, reserve=None: [drifted[i] for i in ids],
         ):
             sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
 
@@ -275,7 +278,7 @@ class TestSyncLeague(unittest.TestCase):
         traded = {**drifted, "p3": {**drifted["p3"], "nfl_team": "kc"}}
         with patch(
             "ffassistant.ingest.sleeper.sleeper_api.get_roster_players",
-            side_effect=lambda ids, lookup: [traded[i] for i in ids],
+            side_effect=lambda ids, lookup, starters=None, reserve=None: [traded[i] for i in ids],
         ):
             sleeper_ingest.sync_league(self.conn, league_id=1, sleeper_league_id="999")
 

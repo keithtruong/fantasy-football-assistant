@@ -41,6 +41,7 @@ FAKE_TEAMS = [
                 "position": "WR",
                 "nfl_team": "MIN",
                 "injury_status": "ACTIVE",
+                "roster_status": "starter",
             },
             {
                 "source_player_id": "102",
@@ -48,6 +49,7 @@ FAKE_TEAMS = [
                 "position": "RB",
                 "nfl_team": "SEA",
                 "injury_status": "QUESTIONABLE",
+                "roster_status": "ir",
             },
         ],
     },
@@ -69,6 +71,7 @@ FAKE_TEAMS = [
                 "position": "RB",
                 "nfl_team": "NYJ",
                 "injury_status": "OUT",
+                "roster_status": "bench",
             },
         ],
     },
@@ -85,6 +88,21 @@ class TestSyncLeague(unittest.TestCase):
             "INSERT INTO players (player_id, full_name, position) VALUES (10, 'Justin Jefferson', 'WR')"
         )
         self.conn.commit()
+
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_roster_status_persisted_to_roster_spots(self, *_mocks):
+        espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026)
+
+        rows = {
+            r["full_name"]: r["roster_status"]
+            for r in self.conn.execute(
+                "SELECT p.full_name, rs.roster_status FROM roster_spots rs JOIN players p ON p.player_id = rs.player_id"
+            )
+        }
+        self.assertEqual(rows["Justin Jefferson"], "starter")
+        self.assertEqual(rows["Banged Up Guy"], "ir")
+        self.assertEqual(rows["Some Other Guy"], "bench")
 
     @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)

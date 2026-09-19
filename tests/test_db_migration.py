@@ -207,6 +207,40 @@ class LeaguesPlatformMigrationTestCase(unittest.TestCase):
         self.assertEqual(updated["projected_points"], 4.0)
         conn.close()
 
+    def test_init_db_adds_roster_status_to_roster_spots(self):
+        self._seed_old_schema()
+        conn = sqlite3.connect(self.db_path)
+        # roster_spots' pre-this-feature shape (no roster_status).
+        conn.executescript(
+            """
+            CREATE TABLE players (player_id INTEGER PRIMARY KEY, full_name TEXT NOT NULL, position TEXT NOT NULL);
+            CREATE TABLE roster_spots (
+                roster_spot_id INTEGER PRIMARY KEY,
+                team_id INTEGER NOT NULL,
+                player_id INTEGER NOT NULL,
+                acquired_via TEXT,
+                added_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (team_id, player_id)
+            );
+            """
+        )
+        conn.execute("INSERT INTO players (player_id, full_name, position) VALUES (1, 'Old Rostered Guy', 'RB')")
+        conn.execute("INSERT INTO roster_spots (roster_spot_id, team_id, player_id) VALUES (1, 1, 1)")
+        conn.commit()
+        conn.close()
+
+        init_db(self.db_path)
+
+        conn = get_connection(self.db_path)
+        row = conn.execute("SELECT * FROM roster_spots WHERE roster_spot_id = 1").fetchone()
+        self.assertIsNone(row["roster_status"])  # new column present, NULL until a resync populates it
+
+        conn.execute("UPDATE roster_spots SET roster_status = 'starter' WHERE roster_spot_id = 1")
+        conn.commit()
+        updated = conn.execute("SELECT * FROM roster_spots WHERE roster_spot_id = 1").fetchone()
+        self.assertEqual(updated["roster_status"], "starter")
+        conn.close()
+
     def test_init_db_is_idempotent(self):
         self._seed_old_schema()
         init_db(self.db_path)

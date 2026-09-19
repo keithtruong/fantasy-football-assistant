@@ -4,13 +4,14 @@ from unittest.mock import MagicMock, patch
 from ffassistant.connectors import espn
 
 
-def fake_player(player_id, name, position, pro_team, injury_status="ACTIVE"):
+def fake_player(player_id, name, position, pro_team, injury_status="ACTIVE", lineup_slot=None):
     p = MagicMock()
     p.playerId = player_id
     p.name = name
     p.position = position
     p.proTeam = pro_team
     p.injuryStatus = injury_status
+    p.lineupSlot = lineup_slot if lineup_slot is not None else position
     return p
 
 
@@ -115,8 +116,9 @@ class TestGetTeams(unittest.TestCase):
                 "Keith's Team",
                 waiver_rank=3,
                 roster=[
-                    fake_player(101, "Justin Jefferson", "WR", "MIN"),
-                    fake_player(102, "Seattle Seahawks", "D/ST", "SEA", injury_status=None),
+                    fake_player(101, "Justin Jefferson", "WR", "MIN", lineup_slot="WR"),
+                    fake_player(102, "Seattle Seahawks", "D/ST", "SEA", injury_status=None, lineup_slot="BE"),
+                    fake_player(103, "Injured Guy", "RB", "KC", lineup_slot="IR"),
                 ],
                 points_for=950.5,
                 points_against=800.0,
@@ -137,9 +139,27 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(team["points_against"], 800.0)
         self.assertEqual(team["playoff_pct"], 92.0)
         self.assertEqual(team["standing"], 1)
-        self.assertEqual(len(team["players"]), 2)
+        self.assertEqual(len(team["players"]), 3)
         self.assertEqual(team["players"][0]["full_name"], "Justin Jefferson")
+        self.assertEqual(team["players"][0]["roster_status"], "starter")
         self.assertEqual(team["players"][1]["position"], "DST")  # mapped from 'D/ST'
+        self.assertEqual(team["players"][1]["roster_status"], "bench")
+        self.assertEqual(team["players"][2]["roster_status"], "ir")
+
+
+class TestRosterStatus(unittest.TestCase):
+    def test_be_is_bench(self):
+        self.assertEqual(espn._roster_status("BE"), "bench")
+
+    def test_ir_is_ir(self):
+        self.assertEqual(espn._roster_status("IR"), "ir")
+
+    def test_position_code_is_starter(self):
+        self.assertEqual(espn._roster_status("QB"), "starter")
+        self.assertEqual(espn._roster_status("RB/WR/TE"), "starter")
+
+    def test_none_defaults_to_starter(self):
+        self.assertEqual(espn._roster_status(None), "starter")
 
 
 class TestGetBoxScores(unittest.TestCase):

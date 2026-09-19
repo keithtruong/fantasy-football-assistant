@@ -125,13 +125,16 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(purdy["position"], "QB")
         self.assertEqual(purdy["nfl_team"], "SF")
         self.assertEqual(purdy["injury_status"], "healthy")
+        self.assertEqual(purdy["roster_status"], "starter")
 
         self.assertEqual(lions["position"], "DST")  # mapped from 'DEF'
+        self.assertEqual(lions["roster_status"], "starter")
 
         # selected_position of 'IR' (roster slot) shouldn't affect the actual
         # injury status, which comes from the separate 'status' field.
         self.assertEqual(wilson["injury_status"], "questionable")
         self.assertEqual(wilson["position"], "WR")
+        self.assertEqual(wilson["roster_status"], "ir")
 
     @patch("ffassistant.connectors.yahoo._connect")
     def test_guillotine_style_standings_has_no_outcome_totals_or_points_against(self, mock_connect):
@@ -156,6 +159,22 @@ class TestGetTeams(unittest.TestCase):
         self.assertIsNone(team["losses"])
         self.assertEqual(team["points_for"], 92.18)
         self.assertIsNone(team["points_against"])
+
+
+class TestRosterStatus(unittest.TestCase):
+    def test_bn_is_bench(self):
+        self.assertEqual(yahoo._roster_status("BN"), "bench")
+
+    def test_ir_prefixed_codes_are_ir(self):
+        self.assertEqual(yahoo._roster_status("IR"), "ir")
+        self.assertEqual(yahoo._roster_status("IR+"), "ir")
+
+    def test_position_code_is_starter(self):
+        self.assertEqual(yahoo._roster_status("QB"), "starter")
+        self.assertEqual(yahoo._roster_status("W/R/T"), "starter")
+
+    def test_none_defaults_to_starter(self):
+        self.assertEqual(yahoo._roster_status(None), "starter")
 
 
 class TestListLeagueIds(unittest.TestCase):

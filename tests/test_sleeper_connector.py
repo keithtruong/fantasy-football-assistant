@@ -48,6 +48,8 @@ class TestGetTeams(unittest.TestCase):
                 "roster_id": 1,
                 "owner_id": "u1",
                 "players": ["1234", "5678"],
+                "starters": ["1234"],
+                "reserve": ["5678"],
                 "settings": {
                     "waiver_position": 3,
                     "wins": 1,
@@ -70,10 +72,14 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(teams[0]["team_name"], "Keith's Team")
         self.assertEqual(teams[0]["waiver_priority"], 3)
         self.assertEqual(teams[0]["player_ids"], ["1234", "5678"])
+        self.assertEqual(teams[0]["starters"], ["1234"])
+        self.assertEqual(teams[0]["reserve"], ["5678"])
         self.assertEqual(teams[0]["points_for"], 135.30)
         self.assertEqual(teams[0]["points_against"], 92.18)
         # No team_name in metadata -> falls back to display_name.
         self.assertEqual(teams[1]["team_name"], "Bob")
+        self.assertEqual(teams[1]["starters"], [])  # no starters/reserve keys at all -> empty, not missing
+        self.assertEqual(teams[1]["reserve"], [])
         self.assertIsNone(teams[1]["points_for"])
         self.assertIsNone(teams[1]["points_against"])
 
@@ -100,6 +106,25 @@ class TestGetRosterPlayers(unittest.TestCase):
         resolved = sleeper.get_roster_players(["1234", "5678"], players_lookup)
         self.assertEqual(resolved[0]["injury_status"], "Questionable")
         self.assertIsNone(resolved[1]["injury_status"])
+
+    def test_roster_status_from_starters_and_reserve_lists(self):
+        players_lookup = {
+            "1234": {"full_name": "Starter Guy", "position": "RB", "team": "SEA"},
+            "5678": {"full_name": "Bench Guy", "position": "WR", "team": "MIN"},
+            "9999": {"full_name": "Hurt Guy", "position": "TE", "team": "KC"},
+        }
+        resolved = sleeper.get_roster_players(
+            ["1234", "5678", "9999"], players_lookup, starters=["1234"], reserve=["9999"]
+        )
+        by_name = {r["full_name"]: r["roster_status"] for r in resolved}
+        self.assertEqual(by_name["Starter Guy"], "starter")
+        self.assertEqual(by_name["Bench Guy"], "bench")
+        self.assertEqual(by_name["Hurt Guy"], "ir")
+
+    def test_roster_status_defaults_to_bench_without_starters_or_reserve(self):
+        players_lookup = {"1234": {"full_name": "Someone", "position": "RB", "team": "SEA"}}
+        resolved = sleeper.get_roster_players(["1234"], players_lookup)
+        self.assertEqual(resolved[0]["roster_status"], "bench")
 
 
 class TestPlayersLookupCache(unittest.TestCase):

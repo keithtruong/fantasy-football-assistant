@@ -470,12 +470,19 @@ CREATE TABLE IF NOT EXISTS draft_analysis_snapshots (
 );
 
 -- Current roster membership snapshot — who's on which team right now.
--- Starter/bench display is derived at the application layer from position
--- + roster_slots counts, not stored here.
 CREATE TABLE IF NOT EXISTS roster_spots (
     roster_spot_id  INTEGER PRIMARY KEY,
     team_id         INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
     player_id       INTEGER NOT NULL REFERENCES players (player_id) ON DELETE CASCADE,
+    -- The platform's own real current lineup slot for this player, collapsed
+    -- to three states (not the full roster_slots vocabulary — a caller
+    -- wanting "started or not" doesn't care whether it was QB/RB/FLEX/etc.):
+    -- ESPN's lineupSlot, Yahoo's selected_position, Sleeper's starters/
+    -- reserve lists. Refreshed on every roster resync, same as
+    -- acquired_via/injury status; NULL until the first sync since this
+    -- column existed, or for a 'manual' platform league with no live data.
+    -- Feeds the Exposure page's Weekly Starters section.
+    roster_status   TEXT CHECK (roster_status IS NULL OR roster_status IN ('starter', 'bench', 'ir')),
     -- NULL when a full roster sync can't tell provenance apart from prior state
     acquired_via    TEXT CHECK (acquired_via IS NULL OR acquired_via IN ('draft', 'waiver', 'trade', 'free_agent')),
     added_at        TEXT NOT NULL DEFAULT (datetime('now')),
