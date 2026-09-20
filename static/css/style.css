@@ -407,6 +407,12 @@ table.borderless-table td {
 tr.adp-gap-positive td:first-child { border-left: 3px solid var(--steal); }
 tr.adp-gap-caution td:first-child { border-left: 3px solid var(--accent); }
 
+/* Weekly Starters exclusivity (see EXCLUSIVITY_ROW_CLASSES in exposure.js):
+   sole_starter = mine, no current opponent also starting them; no_shares =
+   an opponent's, I'm not starting them this week. */
+tr.exposure-row-sole td:first-child { border-left: 3px solid var(--steal); }
+tr.exposure-row-noshares td:first-child { border-left: 3px solid var(--tough-ink); }
+
 /* ---- Rail ---- */
 
 .draft-rail {
@@ -1527,6 +1533,11 @@ table.scoring-table td:last-child {
   gap: 6px;
   padding: 2px 0;
 }
+
+/* Same exclusivity flags as the exposure-row-* table rows above, applied
+   directly to the li since this list has no cells to border. */
+.exposure-nfl-players li.exposure-li-sole { border-left: 3px solid var(--steal); padding-left: 6px; }
+.exposure-nfl-players li.exposure-li-noshares { border-left: 3px solid var(--tough-ink); padding-left: 6px; }
 
 .exposure-player-league-count {
   color: var(--ink-muted);

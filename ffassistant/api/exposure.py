@@ -59,7 +59,26 @@ def _player_summary(entry: dict) -> dict:
         "position": entry["position"],
         "league_count": entry["league_count"],
         "leagues": entry["leagues"],
+        "exclusivity": entry.get("exclusivity"),
     }
+
+
+def _tag_exclusivity(my_starters_by_id: dict, opponent_starters_by_id: dict) -> None:
+    """Flags each side's entries in place with this week's mine-vs-opponents
+    exclusivity, purely from the two starter sets already fetched (no extra
+    roster query) -- 'sole_starter' on a mine-only player (none of this
+    week's opponents are also starting them, though an opponent could still
+    have them benched elsewhere) and 'no_shares' on an opponent-only player
+    (Keith isn't starting them this week). Neither flag reflects full
+    league-wide rostering, just this week's actual starts. None (the
+    default, via entry.get) means the player shows up on both sides.
+    """
+    my_ids = set(my_starters_by_id)
+    opponent_ids = set(opponent_starters_by_id)
+    for player_id, entry in my_starters_by_id.items():
+        entry["exclusivity"] = "sole_starter" if player_id not in opponent_ids else None
+    for player_id, entry in opponent_starters_by_id.items():
+        entry["exclusivity"] = "no_shares" if player_id not in my_ids else None
 
 
 def _starters_by_nfl_team(my_starters_by_id: dict, opponent_starters_by_id: dict) -> list[dict]:
@@ -191,6 +210,9 @@ def get_starters_exposure():
     quiet_nfl_teams are real NFL teams with zero exposure across BOTH sets
     combined — nobody Keith starts and nobody any current opponent starts,
     so that game has no bearing on any of his matchups this week.
+
+    Every player entry (in both position buckets and the by-nfl-team players
+    lists) also carries 'exclusivity' — see _tag_exclusivity.
     """
     db = get_db()
     season = datetime.date.today().year
@@ -226,6 +248,7 @@ def get_starters_exposure():
 
     my_starters = _group_by_player(my_rows)
     opponent_starters = _group_by_player(opponent_rows)
+    _tag_exclusivity(my_starters, opponent_starters)
 
     exposed_nfl_teams = {e["nfl_team"] for e in my_starters.values() if e["nfl_team"]} | {
         e["nfl_team"] for e in opponent_starters.values() if e["nfl_team"]

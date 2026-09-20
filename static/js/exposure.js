@@ -8,6 +8,14 @@ const CORE_POSITIONS = ["QB", "RB", "WR", "TE", "DST", "K"];
 const HIGH_EXPOSURE_POSITIONS = CORE_POSITIONS.filter((p) => p !== "DST" && p !== "K");
 const HIGH_EXPOSURE_THRESHOLD = 3;
 
+// Weekly Starters exclusivity, from the backend's `exclusivity` field on each
+// player entry (see ffassistant.api.exposure._tag_exclusivity): 'sole_starter'
+// (mine, no current opponent is also starting them) and 'no_shares' (an
+// opponent's, I'm not starting them this week). Shared by both the
+// position-grouped tables and the by-nfl-team player lists.
+const EXCLUSIVITY_ROW_CLASSES = { sole_starter: "exposure-row-sole", no_shares: "exposure-row-noshares" };
+const EXCLUSIVITY_LI_CLASSES = { sole_starter: "exposure-li-sole", no_shares: "exposure-li-noshares" };
+
 export async function renderExposureView(container) {
   const [data, starters] = await Promise.all([api.getExposure(), api.getStartersExposure()]);
 
@@ -58,6 +66,8 @@ function buildPositionGroup(position, players) {
   const tbody = document.createElement("tbody");
   for (const player of players) {
     const row = document.createElement("tr");
+    const exclusivityClass = EXCLUSIVITY_ROW_CLASSES[player.exclusivity];
+    if (exclusivityClass) row.classList.add(exclusivityClass);
 
     const nameCell = document.createElement("td");
     nameCell.textContent = player.full_name;
@@ -333,6 +343,8 @@ function buildPlayerList(players) {
   const list = el("ul", "exposure-nfl-players");
   for (const player of players) {
     const li = document.createElement("li");
+    const exclusivityClass = EXCLUSIVITY_LI_CLASSES[player.exclusivity];
+    if (exclusivityClass) li.classList.add(exclusivityClass);
     const nameSpan = document.createElement("span");
     nameSpan.textContent = `${player.full_name} (${player.position})`;
     li.appendChild(nameSpan);

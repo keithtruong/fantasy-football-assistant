@@ -171,6 +171,18 @@ class TestStartersExposureApi(TestExposureApi):
         names = [p["full_name"] for p in rbs]
         self.assertIn("Bijan Robinson", names)  # team 2's starter, my week-3 opponent
 
+    def test_exclusivity_sole_starter_when_no_opponent_starts_it(self):
+        resp = self._get()
+        qbs = resp.get_json()["my_starters_by_position"]["QB"]
+        allen = next(p for p in qbs if p["full_name"] == "Josh Allen")
+        self.assertEqual(allen["exclusivity"], "sole_starter")
+
+    def test_exclusivity_no_shares_when_i_dont_start_it(self):
+        resp = self._get()
+        rbs = resp.get_json()["opponent_starters_by_position"]["RB"]
+        bijan = next(p for p in rbs if p["full_name"] == "Bijan Robinson")
+        self.assertEqual(bijan["exclusivity"], "no_shares")
+
     def test_rival_team_with_no_matchup_row_is_excluded(self):
         # Team 6 (league 2) starts Bijan too, but has no weekly_matchups row
         # pairing it with any of my teams -- must not appear as an opponent.
@@ -227,6 +239,25 @@ class TestStartersExposureApi(TestExposureApi):
         self.assertEqual(teams["KC"]["opponent_count"], 1)
         self.assertEqual([p["full_name"] for p in teams["KC"]["my_players"]], ["My KC Guy"])
         self.assertEqual([p["full_name"] for p in teams["KC"]["opponent_players"]], ["Their KC Guy"])
+
+    def test_exclusivity_null_when_same_player_id_starts_both_sides(self):
+        # A shared keeper/dynasty-style edge case: the exact same player_id
+        # starting for both me and an opponent (e.g. two different leagues'
+        # teams that happen to be the same real person) is neither exclusive
+        # to me nor to the opponent -- exclusivity must be None on both sides.
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("INSERT INTO players (player_id, full_name, position, nfl_team) VALUES (4, 'Shared Guy', 'WR', 'KC')")
+        conn.execute("INSERT INTO roster_spots (team_id, player_id, roster_status) VALUES (1, 4, 'starter')")
+        conn.execute("INSERT INTO roster_spots (team_id, player_id, roster_status) VALUES (2, 4, 'starter')")
+        conn.commit()
+        conn.close()
+
+        resp = self._get()
+        my_wr = next(p for p in resp.get_json()["my_starters_by_position"]["WR"] if p["full_name"] == "Shared Guy")
+        opp_wr = next(p for p in resp.get_json()["opponent_starters_by_position"]["WR"] if p["full_name"] == "Shared Guy")
+        self.assertIsNone(my_wr["exclusivity"])
+        self.assertIsNone(opp_wr["exclusivity"])
 
     def test_by_nfl_team_excludes_teams_with_no_starters_either_side(self):
         resp = self._get()
