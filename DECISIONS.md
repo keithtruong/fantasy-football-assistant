@@ -6,6 +6,66 @@ Newest entries at the top.
 
 ---
 
+## 2026-09-19 — Weekly Starters added to the Exposure page
+
+**Context:** Keith wanted a quick weekly read on who to root for/against — his own actual starters, his current-week opponents' collective starters, and which NFL teams don't touch any of his matchups that week.
+
+**Gap:** none of the three platform connectors captured actual starter/bench/IR status at all — only roster membership. Checked each platform directly and confirmed all three already fetch it, just discarded: ESPN's `Player.lineupSlot` on `team.roster`, Yahoo's `selected_position` on `Team.roster()`, and Sleeper's per-roster `starters`/`reserve` id lists (no per-player slot field there — cross-referenced against the roster's full player list instead).
+
+**Design:** added `roster_spots.roster_status` (starter/bench/ir), refreshed on every roster resync like the rest of that snapshot. New `GET /api/exposure/starters` aggregates Keith's own current starters and, separately, his current-week opponents' starters across every active league, resolving the week itself via `smart_current_week()` since Exposure has no week selector. A Guillotine league has no single weekly opponent, so it only ever feeds the "mine" side. The NFL-team breakdown puts both sides on one card instead of two grids to cross-reference, tagged `root_for` (only his), `root_against` (only an opponent's), or `mixed` (both — e.g. he and an opponent, in different leagues, both start a player from the same team).
+
+**Iterated on Keith's feedback:** moved the weekly sections above the season-long Player/NFL Team Exposure sections; added the team-card view (it originally only had the position-based columns); and added two quick-scan summaries — non-K/DST starters in play for 3+ leagues on either side, and a Root For/Root Against/Not Moving the Needle breakdown of the team grid — both computed client-side from data the endpoint already returns, no extra queries needed.
+
+**Practical effect:** verified end-to-end against live rosters across all three platforms and in the browser before shipping.
+
+---
+
+## 2026-09-15 — Fixed ROS rankings ingestion (never actually verified against the real page)
+
+**Context:** Keith flagged that the rankings provider's new Rest-of-Season Top 150 was out and asked whether the tool was ready to ingest it.
+
+**Found:** `get_ros_rankings()` had never been live-tested — it was built as a guess, copying the draft Top-300's field names (`etrRank`/`posRankEtr`) and its 4-URL-per-format config shape. Fetching the real page directly showed both assumptions were wrong: the actual fields are `rank`/`posRank` (no `adp`), and ROS is only published in two flavors — half-PPR and half-PPR-superflex (2-QB) — embedded together in a *single* fetch and distinguished by a `site` field, not four separate URLs like the draft board.
+
+**Fix:** rewrote the connector against the real shape, collapsed `.rankings_config.json`'s `ros_urls` (4 keys) to one `ros_url`, and added `derive_ros_scoring_format()` — superflex only for a league with a SUPER_FLEX roster slot, half_ppr for every other league regardless of its own actual reception scoring, since the provider doesn't publish that finer PPR granularity for ROS at all. Also found and fixed a second, more serious bug while at it: the in-season Rest-of-Season *display* itself (not just the sync) was asking for the draft board's full four-way format — it would have shown an empty list for every non-superflex league even after a successful sync.
+
+**Practical effect:** verified live — 150 players synced per format with zero new unmatched names, and the in-season ROS view confirmed correctly differentiated (e.g. a much higher QB rank in the superflex league than everywhere else).
+
+---
+
+## 2026-09-15 — league_seasons' W/L/T kept in sync with matchups automatically
+
+**Context:** Keith wanted the Leagues tab (buy-in/max/actual/finish + season W/L/T) populated for 2026's 9 active leagues, with current win totals.
+
+**Gap:** `league_seasons` (which the Leagues tab and All-Time rollup read from) is a separate table from `matchups` (which Games/Weekly/Close-Games read from and which the weekly autofill already keeps current) — nothing kept the two in sync, so `league_seasons` would go stale the moment a new week's results landed.
+
+**Fix:** `sync_league_season_record()` sums `matchups`' outcomes for a league/season and upserts just wins/losses/ties into `league_seasons`, leaving buy_in/max_payout/actual_payout/finish_position untouched — creating the row on first sync (those columns start NULL) or updating in place. A Guillotine-format league has no `matchups` rows at all, so this naturally lands at 0/0/0 with no format-specific branching needed. Wired into `scripts/autofill_wl.py`'s weekly run so the Leagues tab never needs a separate manual step.
+
+**Practical effect:** buy-in/max payout for all 9 leagues entered by hand once (season-stable, low-frequency, per the original W-L tracker design); actual payout/finish position stay manual at year-end, same as always.
+
+---
+
+## 2026-09-15 — Guillotine (survivor-elimination) league W-L tracking + weekly automation
+
+**Context:** the Guillotine league (lowest scorer eliminated each week, not head-to-head) had no weekly result tracking at all — the legacy spreadsheet import and every existing autofill path skip it outright, since `matchups`' `outcome`/`points_against` columns mean something specific to a head-to-head record that doesn't exist here.
+
+**Data model:** added a `league_history.format` flag plus dedicated `guillotine_weeks` (rank/remaining-count/eliminated-points per week) and `guillotine_team_snapshots` tables, instead of overloading `matchups` with a different meaning behind the same columns. Every existing aggregate (Weekly, Close Games, All-Time) needs zero Guillotine-awareness as a result — they simply never read the new tables.
+
+**Automation:** Yahoo's own per-team `rank_week`/`points_from_chop` fields on `standings()` looked purpose-built for this, but turned out to be live/current-week-only when checked directly — there's no `week` parameter, and `current_week()` had already advanced past a just-finished week by the time those fields would reflect it (confirmed both flat 0.00 the morning after a week closed). `points_for` itself is reliable, though (checked against a real result), so `ffassistant/guillotine.py` instead snapshots every team's cumulative `points_for` weekly and derives that week's real score/rank/eliminated-team as the delta against the prior snapshot — tracking who's still alive itself rather than trusting Yahoo's own standings list to shrink (it was still listing an already-eliminated team's full field a day after that team was cut).
+
+**Practical effect:** wired into `scripts/autofill_wl.py`'s weekly run alongside the head-to-head autofill; verified against the real league (rank 9 of 18, exact point totals matching what Keith reported by hand).
+
+---
+
+## 2026-09-15 — Scheduled tasks need S4U logon, not Interactive, to survive a reboot
+
+**Context:** a one-time task set to autofill W-L data at 4am never ran. Windows Update rebooted the machine at 2:29am — the reboot itself completed fine, but the task was registered with `LogonType = InteractiveToken`, which only launches inside an active desktop session. With nobody logged back in before the task's 6am window closed, Task Scheduler never got a session to launch it in, and being one-time, that window was gone for good.
+
+**Fix:** re-registered the recurring "FF Assistant In-Season Refresh" task, and created the new recurring "FF Assistant WL Autofill" and "FF Assistant Week Results Sync" tasks, all with `LogonType = S4U` ("run whether user is logged on or not") instead. Registering S4U requires Windows admin elevation, which a Claude Code shell can't grant itself — Keith ran the registration commands himself in an elevated PowerShell window.
+
+**Practical effect:** any future scheduled task in this project should register S4U from the start rather than defaulting to Interactive, so a Windows Update reboot (or any reboot) can't strand it again.
+
+---
+
 ## 2026-09-15 — ESPN syncs run on native Windows Task Scheduler, not through a Claude session
 
 **Context:** Following the GroupMe Capabilities fix below, tried the same approach for ESPN — Keith added `lm-api-reads.fantasy.espn.com` and `site.api.espn.com` to the same Claude Capabilities allowlist and restarted. Network access was confirmed genuinely open (a direct call returned a real ESPN API response — a proper JSON 404 for a bad path — not a proxy block, distinguishing it from the earlier connection-refused failures), and a real `sync_box_scores` call for TAMS week 1 got far enough to pull actual player data back from ESPN.
