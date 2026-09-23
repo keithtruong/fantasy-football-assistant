@@ -56,7 +56,14 @@ def resolve_or_create_player(conn: sqlite3.Connection, source: str, player_info:
 
 
 def upsert_weekly_matchup(
-    conn: sqlite3.Connection, league_id: int, season: int, week: int, team_id: int, opponent_team_id: int
+    conn: sqlite3.Connection,
+    league_id: int,
+    season: int,
+    week: int,
+    team_id: int,
+    opponent_team_id: int,
+    points_for: float | None = None,
+    points_against: float | None = None,
 ) -> None:
     """A platform can report the same team_id twice for one week (seen on a
     guillotine/elimination-format Yahoo league — the exact shape wasn't
@@ -65,11 +72,19 @@ def upsert_weekly_matchup(
     league's whole roster refresh). Upserting instead of a bare INSERT means a
     second report for the same team_id just overwrites the first rather than
     taking down the sync.
+
+    points_for/points_against are that single week's actual score (not
+    teams.points_for's season-cumulative total) — optional and defaulting to
+    None so callers on a connector that doesn't supply them yet (or a bye
+    week) aren't forced to pass a value.
     """
     conn.execute(
-        "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (?, ?, ?, ?, ?) "
-        "ON CONFLICT (league_id, season, week, team_id) DO UPDATE SET opponent_team_id = excluded.opponent_team_id",
-        (league_id, season, week, team_id, opponent_team_id),
+        "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id, points_for, points_against) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT (league_id, season, week, team_id) DO UPDATE SET "
+        "opponent_team_id = excluded.opponent_team_id, points_for = excluded.points_for, "
+        "points_against = excluded.points_against",
+        (league_id, season, week, team_id, opponent_team_id, points_for, points_against),
     )
 
 

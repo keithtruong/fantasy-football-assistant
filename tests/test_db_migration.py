@@ -241,6 +241,42 @@ class LeaguesPlatformMigrationTestCase(unittest.TestCase):
         self.assertEqual(updated["roster_status"], "starter")
         conn.close()
 
+    def test_init_db_adds_points_to_weekly_matchups(self):
+        self._seed_old_schema()
+        conn = sqlite3.connect(self.db_path)
+        # weekly_matchups' pre-this-feature shape (pairing only, no points).
+        conn.executescript(
+            """
+            CREATE TABLE weekly_matchups (
+                league_id INTEGER NOT NULL,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                team_id INTEGER NOT NULL,
+                opponent_team_id INTEGER NOT NULL,
+                PRIMARY KEY (league_id, season, week, team_id)
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id) VALUES (1, 2025, 1, 1, 2)"
+        )
+        conn.commit()
+        conn.close()
+
+        init_db(self.db_path)
+
+        conn = get_connection(self.db_path)
+        row = conn.execute("SELECT * FROM weekly_matchups WHERE team_id = 1").fetchone()
+        self.assertEqual(row["opponent_team_id"], 2)  # pre-existing row survived
+        self.assertIsNone(row["points_for"])  # new column present, NULL until a resync populates it
+        self.assertIsNone(row["points_against"])
+
+        conn.execute("UPDATE weekly_matchups SET points_for = 104.38, points_against = 84.26 WHERE team_id = 1")
+        conn.commit()
+        updated = conn.execute("SELECT * FROM weekly_matchups WHERE team_id = 1").fetchone()
+        self.assertEqual(updated["points_for"], 104.38)
+        conn.close()
+
     def test_init_db_is_idempotent(self):
         self._seed_old_schema()
         init_db(self.db_path)

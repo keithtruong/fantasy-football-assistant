@@ -92,6 +92,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # Only guillotine-format league on record today.
         conn.execute("UPDATE league_history SET format = 'guillotine' WHERE name = 'Guillotine'")
 
+    weekly_matchups_columns = {row["name"] for row in conn.execute("PRAGMA table_info(weekly_matchups)")}
+    if "points_for" not in weekly_matchups_columns:
+        conn.execute("ALTER TABLE weekly_matchups ADD COLUMN points_for REAL")
+    if "points_against" not in weekly_matchups_columns:
+        conn.execute("ALTER TABLE weekly_matchups ADD COLUMN points_against REAL")
+
     roster_spots_columns = {row["name"] for row in conn.execute("PRAGMA table_info(roster_spots)")}
     if "roster_status" not in roster_spots_columns:
         conn.execute(

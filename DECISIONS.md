@@ -6,6 +6,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-09-22 — Fixed W-L autofill using season-cumulative points instead of that week's score
+
+**Context:** Ran `scripts/autofill_wl.py --week 2` to fill in week 2's W-L results; Keith flagged the scores as obviously too high for a single week.
+
+**Found:** `autofill_from_platform_sync()` read `teams.points_for`/`points_against`, which all three connectors populate from the platform's season-to-date standings (explicitly documented as such in Yahoo's `get_teams()` docstring) — not that specific week's score. So every autofilled week was actually being stamped with the running season total. Notably, this wasn't just cosmetically wrong: BC2's week 2 outcome flipped from W to L once corrected, meaning the bad data would have shown Keith winning a matchup he actually lost. The Guillotine league already had the right instinct for this exact class of problem (snapshotting cumulative totals and deriving a week's score as the delta against the prior week) but that pattern was never applied to the ordinary head-to-head leagues.
+
+**Fix:** rather than a delta (which drifts if a week's sync is ever skipped), pulled the real per-week score directly from each platform's own matchup-level data, confirmed live against all three before committing: ESPN's `scoreboard()` matchup objects expose `home_score`/`away_score`; Yahoo's raw `matchups()` response carries `team_points.total` (`coverage_type: 'week'`) alongside each `team_id`, in the same order; Sleeper's `/matchups/{week}` rows already report a single week's `points` natively. `weekly_matchups` gained `points_for`/`points_against` columns, all three ingest modules' `get_matchups()` now return them, and `autofill_from_platform_sync()` reads from there instead of `teams`.
+
+**Practical effect:** re-ran week 2 after the fix — every league's score is now a plausible single-week total, and BC2 correctly shows as a loss. Added connector-level tests for the new score extraction (mocking each platform's real response shape) plus a migration test, since this table shape hadn't been unit-tested at all before.
+
+---
+
 ## 2026-09-19 — Weekly Starters added to the Exposure page
 
 **Context:** Keith wanted a quick weekly read on who to root for/against — his own actual starters, his current-week opponents' collective starters, and which NFL teams don't touch any of his matchups that week.

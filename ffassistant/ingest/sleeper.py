@@ -130,4 +130,7 @@ def _sync_matchups(conn, league_id, sleeper_league_id, season, week, team_id_by_
         opponent_team_id = team_id_by_platform_id.get(pair["opponent_platform_team_id"])
         if team_id is None or opponent_team_id is None:
             continue
-        upsert_weekly_matchup(conn, league_id, season, week, team_id, opponent_team_id)
+        upsert_weekly_matchup(
+            conn, league_id, season, week, team_id, opponent_team_id,
+            pair.get("points_for"), pair.get("points_against"),
+        )

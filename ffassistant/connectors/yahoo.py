@@ -193,12 +193,21 @@ def get_standings(league_id: str, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
 
 
 def get_matchups(league_id: str, week: int, oauth_path=YAHOO_OAUTH_PATH) -> list[dict]:
-    """This week's opponent pairings, one entry per side: {platform_team_id, opponent_platform_team_id}.
+    """This week's opponent pairings, one entry per side: {platform_team_id,
+    opponent_platform_team_id, points_for, points_against}.
 
     league.matchups() only exposes the raw scoreboard response, so this parses it the same
     way get_league_settings() parses raw settings — via objectpath, extracting each
     matchup's pair of team_id values (confirmed by inspection: exactly 2 per matchup;
     a matchup with any other count is skipped rather than guessed at, likely a bye week).
+
+    points_for/points_against come from that same matchup's team_points.total
+    (confirmed by inspection against a live league: each has coverage_type
+    'week' and appears in the same team order as team_id, so zipping the two
+    lists pairs them correctly) — that single week's actual score, NOT the
+    same thing as get_teams()'s points_for (season-to-date cumulative).
+    Guarded the same way as team_ids: anything other than exactly 2 is
+    skipped rather than guessed at.
     """
     import objectpath
 
@@ -213,9 +222,13 @@ def get_matchups(league_id: str, week: int, oauth_path=YAHOO_OAUTH_PATH) -> list
         team_ids = list(objectpath.Tree(entry["matchup"]).execute("$..team_id"))
         if len(team_ids) != 2:
             continue
+        points = list(objectpath.Tree(entry["matchup"]).execute("$..team_points.total"))
+        if len(points) != 2:
+            continue
         a, b = team_ids
-        pairs.append({"platform_team_id": str(a), "opponent_platform_team_id": str(b)})
-        pairs.append({"platform_team_id": str(b), "opponent_platform_team_id": str(a)})
+        pa, pb = float(points[0]), float(points[1])
+        pairs.append({"platform_team_id": str(a), "opponent_platform_team_id": str(b), "points_for": pa, "points_against": pb})
+        pairs.append({"platform_team_id": str(b), "opponent_platform_team_id": str(a), "points_for": pb, "points_against": pa})
     return pairs
 
 

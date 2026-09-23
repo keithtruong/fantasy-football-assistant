@@ -113,25 +113,36 @@ def get_teams(sleeper_league_id: str) -> list[dict]:
 
 
 def get_matchups(sleeper_league_id: str, week: int) -> list[dict]:
-    """This week's opponent pairings, one entry per side: {platform_team_id, opponent_platform_team_id}.
+    """This week's opponent pairings, one entry per side: {platform_team_id,
+    opponent_platform_team_id, points_for, points_against}.
 
     Sleeper groups rosters into a pairing via a shared matchup_id — a roster on a bye
     week has a matchup_id shared with no one else and is simply skipped.
+
+    points_for/points_against come straight from each roster's own `points`
+    field in this same weekly response — Sleeper reports that natively as a
+    single week's score already (unlike get_teams()'s fpts, which is
+    season-to-date cumulative), so no delta math is needed here.
     """
     resp = requests.get(f"{BASE_URL}/league/{sleeper_league_id}/matchups/{week}", timeout=30)
     resp.raise_for_status()
+    rows = resp.json()
 
     rosters_by_matchup: dict[int, list[str]] = {}
-    for row in resp.json():
-        rosters_by_matchup.setdefault(row["matchup_id"], []).append(str(row["roster_id"]))
+    points_by_roster: dict[str, float | None] = {}
+    for row in rows:
+        roster_id = str(row["roster_id"])
+        rosters_by_matchup.setdefault(row["matchup_id"], []).append(roster_id)
+        points_by_roster[roster_id] = row.get("points")
 
     pairs = []
     for roster_ids in rosters_by_matchup.values():
         if len(roster_ids) != 2:
             continue  # bye week (lone roster) or unexpected grouping — skip rather than guess
         a, b = roster_ids
-        pairs.append({"platform_team_id": a, "opponent_platform_team_id": b})
-        pairs.append({"platform_team_id": b, "opponent_platform_team_id": a})
+        pa, pb = points_by_roster.get(a), points_by_roster.get(b)
+        pairs.append({"platform_team_id": a, "opponent_platform_team_id": b, "points_for": pa, "points_against": pb})
+        pairs.append({"platform_team_id": b, "opponent_platform_team_id": a, "points_for": pb, "points_against": pa})
     return pairs
 
 

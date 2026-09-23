@@ -84,6 +84,35 @@ class TestGetTeams(unittest.TestCase):
         self.assertIsNone(teams[1]["points_against"])
 
 
+class TestGetMatchups(unittest.TestCase):
+    @patch("ffassistant.connectors.sleeper.requests.get")
+    def test_pairs_both_sides_with_that_weeks_score(self, mock_get):
+        mock_get.return_value = FakeResponse(
+            [
+                {"roster_id": 1, "matchup_id": 1, "points": 118.48},
+                {"roster_id": 11, "matchup_id": 1, "points": 102.8},
+            ]
+        )
+
+        pairs = sleeper.get_matchups("123", 2)
+
+        self.assertEqual(
+            pairs,
+            [
+                {"platform_team_id": "1", "opponent_platform_team_id": "11", "points_for": 118.48, "points_against": 102.8},
+                {"platform_team_id": "11", "opponent_platform_team_id": "1", "points_for": 102.8, "points_against": 118.48},
+            ],
+        )
+
+    @patch("ffassistant.connectors.sleeper.requests.get")
+    def test_bye_week_lone_roster_is_skipped(self, mock_get):
+        mock_get.return_value = FakeResponse([{"roster_id": 1, "matchup_id": 1, "points": 118.48}])
+
+        pairs = sleeper.get_matchups("123", 2)
+
+        self.assertEqual(pairs, [])
+
+
 class TestGetRosterPlayers(unittest.TestCase):
     def test_resolves_and_maps_defense_position(self):
         players_lookup = {

@@ -137,6 +137,13 @@ def autofill_from_platform_sync(conn: sqlite3.Connection, season: int, week: int
     refresh) for the target week before this so that match has fresh data to
     read.
 
+    Reads that week's score from weekly_matchups.points_for/points_against
+    (each connector's own per-matchup total for that specific week — see
+    ffassistant.connectors.{espn,yahoo,sleeper}.get_matchups), NOT
+    teams.points_for/points_against, which is season-to-date cumulative and
+    was the source of a real bug here: using it directly filled every week
+    with the running total instead of that week's actual score.
+
     Does not itself detect "is this week actually final" — none of the three
     connectors expose that directly. Instead it treats points_for == 0.0 (or
     missing) as "not synced/finalized yet" and skips it, since a real
@@ -177,11 +184,16 @@ def autofill_from_platform_sync(conn: sqlite3.Connection, season: int, week: int
             results.append({"league_history_name": history["name"], "status": "no_traditional_record"})
             continue
 
-        if not team["points_for"] or team["points_against"] is None:
+        weekly = conn.execute(
+            "SELECT points_for, points_against FROM weekly_matchups "
+            "WHERE league_id = ? AND season = ? AND week = ? AND team_id = ?",
+            (league["league_id"], season, week, team["team_id"]),
+        ).fetchone()
+        if weekly is None or not weekly["points_for"] or weekly["points_against"] is None:
             results.append({"league_history_name": history["name"], "status": "not_final_yet"})
             continue
 
-        row = upsert_matchup(conn, history["league_history_id"], season, week, team["points_for"], team["points_against"])
+        row = upsert_matchup(conn, history["league_history_id"], season, week, weekly["points_for"], weekly["points_against"])
         results.append({"league_history_name": history["name"], "status": "filled", **row})
 
     return results

@@ -129,16 +129,41 @@ class TestAutofillFromPlatformSync(unittest.TestCase):
         )
 
     def _add_team(self, team_id, league_id, is_mine=1, wins=None, losses=None, points_for=None, points_against=None):
+        # points_for/points_against here are teams' season-cumulative columns
+        # (see get_teams()) -- autofill_from_platform_sync no longer reads
+        # them (that was the real bug: using the cumulative total as if it
+        # were a single week's score). Kept as params since the teams table
+        # still carries them from the platform sync; use _add_weekly_matchup
+        # below for the per-week score autofill actually reads.
         self.conn.execute(
             "INSERT INTO teams (team_id, league_id, team_name, is_mine, wins, losses, points_for, points_against) "
             "VALUES (?, ?, 'Mine', ?, ?, ?, ?, ?)",
             (team_id, league_id, is_mine, wins, losses, points_for, points_against),
         )
 
-    def test_fills_matchup_from_synced_team_record(self):
+    def _add_weekly_matchup(self, league_id, team_id, week, points_for=None, points_against=None, opponent_team_id=None):
+        if opponent_team_id is None:
+            opponent_team_id = 90000 + team_id  # arbitrary, distinct from any real team_id used in these tests
+            # weekly_matchups.opponent_team_id is FK'd to teams -- needs a real
+            # row to point to, not just an arbitrary id.
+            self.conn.execute(
+                "INSERT OR IGNORE INTO teams (team_id, league_id, team_name, is_mine) VALUES (?, ?, 'Opponent', 0)",
+                (opponent_team_id, league_id),
+            )
+        self.conn.execute(
+            "INSERT INTO weekly_matchups (league_id, season, week, team_id, opponent_team_id, points_for, points_against) "
+            "VALUES (?, 2026, ?, ?, ?, ?, ?)",
+            (league_id, week, team_id, opponent_team_id, points_for, points_against),
+        )
+
+    def test_fills_matchup_from_synced_weekly_matchup(self):
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC1')")
         self._add_league(10, "BC1 2026")
-        self._add_team(100, 10, wins=1, losses=0, points_for=120.5, points_against=98.2)
+        self._add_team(100, 10, wins=1, losses=0)
+        # Season-cumulative would be much higher than this by week 1 -- distinct
+        # values from any teams.points_for prove autofill reads the per-week
+        # score, not the cumulative one.
+        self._add_weekly_matchup(10, 100, 1, points_for=120.5, points_against=98.2)
         self.conn.commit()
 
         results = autofill_from_platform_sync(self.conn, 2026, 1)
@@ -170,7 +195,8 @@ class TestAutofillFromPlatformSync(unittest.TestCase):
     def test_skips_league_with_no_team_flagged_is_mine(self):
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC1')")
         self._add_league(10, "BC1 2026")
-        self._add_team(100, 10, is_mine=0, wins=1, losses=0, points_for=120.5, points_against=98.2)
+        self._add_team(100, 10, is_mine=0, wins=1, losses=0)
+        self._add_weekly_matchup(10, 100, 1, points_for=120.5, points_against=98.2)
         self.conn.commit()
 
         results = autofill_from_platform_sync(self.conn, 2026, 1)
@@ -181,7 +207,7 @@ class TestAutofillFromPlatformSync(unittest.TestCase):
         # Guillotine-style: wins/losses come back None from the connector.
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'Guillotine')")
         self._add_league(10, "Guillotine 2026", platform="yahoo")
-        self._add_team(100, 10, wins=None, losses=None, points_for=92.18, points_against=None)
+        self._add_team(100, 10, wins=None, losses=None)
         self.conn.commit()
 
         results = autofill_from_platform_sync(self.conn, 2026, 1)
@@ -191,7 +217,8 @@ class TestAutofillFromPlatformSync(unittest.TestCase):
     def test_skips_when_points_for_is_zero_treated_as_not_final(self):
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC1')")
         self._add_league(10, "BC1 2026")
-        self._add_team(100, 10, wins=0, losses=0, points_for=0.0, points_against=0.0)
+        self._add_team(100, 10, wins=0, losses=0)
+        self._add_weekly_matchup(10, 100, 1, points_for=0.0, points_against=0.0)
         self.conn.commit()
 
         results = autofill_from_platform_sync(self.conn, 2026, 1)
@@ -202,12 +229,25 @@ class TestAutofillFromPlatformSync(unittest.TestCase):
         # Sleeper shape before fpts_against exists at all.
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC3')")
         self._add_league(10, "BC3 2026", platform="sleeper")
-        self._add_team(100, 10, wins=0, losses=0, points_for=120.5, points_against=None)
+        self._add_team(100, 10, wins=0, losses=0)
+        self._add_weekly_matchup(10, 100, 1, points_for=120.5, points_against=None)
         self.conn.commit()
 
         results = autofill_from_platform_sync(self.conn, 2026, 1)
 
         self.assertEqual(results, [{"league_history_name": "BC3", "status": "not_final_yet"}])
+
+    def test_skips_when_weekly_matchup_not_synced_yet(self):
+        # A week that hasn't been synced at all yet (no weekly_matchups row) --
+        # distinct from the zero/missing-value cases above.
+        self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC1')")
+        self._add_league(10, "BC1 2026")
+        self._add_team(100, 10, wins=0, losses=0)
+        self.conn.commit()
+
+        results = autofill_from_platform_sync(self.conn, 2026, 1)
+
+        self.assertEqual(results, [{"league_history_name": "BC1", "status": "not_final_yet"}])
 
     def test_inactive_league_history_is_ignored(self):
         self.conn.execute("INSERT INTO league_history (league_history_id, name, active) VALUES (1, 'Chrisnfriends', 0)")
@@ -221,9 +261,11 @@ class TestAutofillFromPlatformSync(unittest.TestCase):
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (1, 'BC1')")
         self.conn.execute("INSERT INTO league_history (league_history_id, name) VALUES (2, 'BC2')")
         self._add_league(10, "BC1 2026")
-        self._add_team(100, 10, wins=1, losses=0, points_for=120.5, points_against=98.2)
+        self._add_team(100, 10, wins=1, losses=0)
+        self._add_weekly_matchup(10, 100, 1, points_for=120.5, points_against=98.2)
         self._add_league(11, "BC2 2026")
-        self._add_team(101, 11, wins=0, losses=0, points_for=0.0, points_against=0.0)
+        self._add_team(101, 11, wins=0, losses=0)
+        self._add_weekly_matchup(11, 101, 1, points_for=0.0, points_against=0.0)
         self.conn.commit()
 
         results = autofill_from_platform_sync(self.conn, 2026, 1)

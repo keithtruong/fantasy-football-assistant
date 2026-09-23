@@ -161,6 +161,44 @@ class TestGetTeams(unittest.TestCase):
         self.assertIsNone(team["points_against"])
 
 
+def _fake_matchups_raw(matchup_pairs):
+    """matchup_pairs: list of (team_id_a, points_a, team_id_b, points_b),
+    shaped like the real per-matchup 'teams' block confirmed live against
+    Yahoo's API (see ffassistant.connectors.yahoo.get_matchups)."""
+    matchups = {"count": len(matchup_pairs)}
+    for i, (team_a, points_a, team_b, points_b) in enumerate(matchup_pairs):
+        matchups[str(i)] = {
+            "matchup": {
+                "0": {
+                    "teams": {
+                        "count": 2,
+                        "0": {"team": [[{"team_id": team_a}], {"team_points": {"coverage_type": "week", "total": points_a}}]},
+                        "1": {"team": [[{"team_id": team_b}], {"team_points": {"coverage_type": "week", "total": points_b}}]},
+                    }
+                }
+            }
+        }
+    return {"fantasy_content": {"league": [{}, {"scoreboard": {"0": {"matchups": matchups}}}]}}
+
+
+class TestGetMatchups(unittest.TestCase):
+    @patch("ffassistant.connectors.yahoo._connect")
+    def test_pairs_both_sides_with_that_weeks_score(self, mock_connect):
+        league = MagicMock()
+        league.matchups.return_value = _fake_matchups_raw([("1", "104.38", "2", "84.26")])
+        mock_connect.return_value = league
+
+        pairs = yahoo.get_matchups("461.l.656302", 2)
+
+        self.assertEqual(
+            pairs,
+            [
+                {"platform_team_id": "1", "opponent_platform_team_id": "2", "points_for": 104.38, "points_against": 84.26},
+                {"platform_team_id": "2", "opponent_platform_team_id": "1", "points_for": 84.26, "points_against": 104.38},
+            ],
+        )
+
+
 class TestRosterStatus(unittest.TestCase):
     def test_bn_is_bench(self):
         self.assertEqual(yahoo._roster_status("BN"), "bench")

@@ -142,12 +142,20 @@ CREATE TABLE IF NOT EXISTS player_status (
 -- stored separately) so a lookup is a plain WHERE team_id = ?. Populated
 -- from platform roster syncs alongside player_status, same "only when a week
 -- is given" convention.
+-- points_for/points_against are that single week's actual score straight from
+-- the platform's own per-matchup total (ESPN's home_score/away_score, Yahoo's
+-- team_points, Sleeper's per-roster points) -- NOT the same as teams.points_for,
+-- which is season-to-date cumulative. NULL until that week's score is
+-- reported (a future/unplayed week, or a connector that hasn't been updated
+-- to supply it yet).
 CREATE TABLE IF NOT EXISTS weekly_matchups (
     league_id           INTEGER NOT NULL REFERENCES leagues (league_id) ON DELETE CASCADE,
     season              INTEGER NOT NULL,
     week                INTEGER NOT NULL,
     team_id             INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
     opponent_team_id    INTEGER NOT NULL REFERENCES teams (team_id) ON DELETE CASCADE,
+    points_for          REAL,
+    points_against      REAL,
     PRIMARY KEY (league_id, season, week, team_id)
 );
 

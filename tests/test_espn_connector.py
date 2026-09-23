@@ -147,6 +147,51 @@ class TestGetTeams(unittest.TestCase):
         self.assertEqual(team["players"][2]["roster_status"], "ir")
 
 
+def fake_matchup(home_team_id, home_score, away_team_id=None, away_score=None):
+    m = MagicMock()
+    home = MagicMock()
+    home.team_id = home_team_id
+    m.home_team = home
+    m.home_score = home_score
+    if away_team_id is None:
+        m.away_team = None
+        m.away_score = None
+    else:
+        away = MagicMock()
+        away.team_id = away_team_id
+        m.away_team = away
+        m.away_score = away_score
+    return m
+
+
+class TestGetMatchups(unittest.TestCase):
+    @patch("ffassistant.connectors.espn._connect")
+    def test_pairs_both_sides_with_that_weeks_score(self, mock_connect):
+        league = MagicMock()
+        league.scoreboard.return_value = [fake_matchup(1, 104.38, 2, 84.26)]
+        mock_connect.return_value = league
+
+        pairs = espn.get_matchups(123, 2026, 2)
+
+        self.assertEqual(
+            pairs,
+            [
+                {"platform_team_id": "1", "opponent_platform_team_id": "2", "points_for": 104.38, "points_against": 84.26},
+                {"platform_team_id": "2", "opponent_platform_team_id": "1", "points_for": 84.26, "points_against": 104.38},
+            ],
+        )
+
+    @patch("ffassistant.connectors.espn._connect")
+    def test_bye_week_is_omitted(self, mock_connect):
+        league = MagicMock()
+        league.scoreboard.return_value = [fake_matchup(1, 104.38)]
+        mock_connect.return_value = league
+
+        pairs = espn.get_matchups(123, 2026, 2)
+
+        self.assertEqual(pairs, [])
+
+
 class TestRosterStatus(unittest.TestCase):
     def test_be_is_bench(self):
         self.assertEqual(espn._roster_status("BE"), "bench")

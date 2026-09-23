@@ -120,8 +120,14 @@ def get_teams(
 def get_matchups(
     league_id: int, year: int, week: int, espn_s2: str | None = None, swid: str | None = None
 ) -> list[dict]:
-    """This week's opponent pairings, one entry per side: {platform_team_id, opponent_platform_team_id}.
-    A bye week (no opponent on one side) is simply omitted rather than paired with a placeholder.
+    """This week's opponent pairings, one entry per side: {platform_team_id,
+    opponent_platform_team_id, points_for, points_against}. A bye week (no
+    opponent on one side) is simply omitted rather than paired with a placeholder.
+
+    points_for/points_against come from the scoreboard matchup's own
+    home_score/away_score — that single week's actual score, as ESPN computes
+    it from the started lineup, NOT the same thing as get_teams()'s
+    points_for (season-to-date cumulative).
     """
     league = _connect(league_id, year, espn_s2, swid)
     matchups = league.scoreboard(week=week)
@@ -132,8 +138,20 @@ def get_matchups(
         away = getattr(matchup, "away_team", None)
         if home is None or away is None:
             continue  # bye week — one side has no team to pair with
-        pairs.append({"platform_team_id": str(home.team_id), "opponent_platform_team_id": str(away.team_id)})
-        pairs.append({"platform_team_id": str(away.team_id), "opponent_platform_team_id": str(home.team_id)})
+        home_score = getattr(matchup, "home_score", None)
+        away_score = getattr(matchup, "away_score", None)
+        pairs.append({
+            "platform_team_id": str(home.team_id),
+            "opponent_platform_team_id": str(away.team_id),
+            "points_for": home_score,
+            "points_against": away_score,
+        })
+        pairs.append({
+            "platform_team_id": str(away.team_id),
+            "opponent_platform_team_id": str(home.team_id),
+            "points_for": away_score,
+            "points_against": home_score,
+        })
     return pairs
 
 

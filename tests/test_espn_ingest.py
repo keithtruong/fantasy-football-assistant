@@ -221,6 +221,29 @@ class TestSyncLeague(unittest.TestCase):
         pairs = {(r["mine"], r["opponent"]) for r in rows}
         self.assertEqual(pairs, {("1", "2"), ("2", "1")})
 
+    @patch(
+        "ffassistant.ingest.espn.espn_api.get_matchups",
+        return_value=[
+            {"platform_team_id": "1", "opponent_platform_team_id": "2", "points_for": 104.38, "points_against": 84.26},
+            {"platform_team_id": "2", "opponent_platform_team_id": "1", "points_for": 84.26, "points_against": 104.38},
+        ],
+    )
+    @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
+    @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
+    def test_matchup_score_synced_alongside_pairing(self, *_mocks):
+        # That week's actual score (not teams.points_for's season-cumulative
+        # total) should land on weekly_matchups -- see ffassistant.wl's
+        # autofill_from_platform_sync, which reads it from here.
+        espn_ingest.sync_league(self.conn, league_id=1, espn_league_id=999, year=2026, week=5)
+
+        row = self.conn.execute(
+            "SELECT points_for, points_against FROM weekly_matchups "
+            "WHERE league_id = 1 AND season = 2026 AND week = 5 AND team_id = "
+            "(SELECT team_id FROM teams WHERE platform_team_id = '1')"
+        ).fetchone()
+        self.assertEqual(row["points_for"], 104.38)
+        self.assertEqual(row["points_against"], 84.26)
+
     @patch("ffassistant.ingest.espn.espn_api.get_teams", return_value=FAKE_TEAMS)
     @patch("ffassistant.ingest.espn.espn_api.get_league_settings", return_value=FAKE_SETTINGS)
     def test_no_matchup_synced_without_week(self, *_mocks):

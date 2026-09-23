@@ -135,7 +135,10 @@ def _sync_matchups(conn, league_id, espn_league_id, season, week, team_id_by_pla
         opponent_team_id = team_id_by_platform_id.get(pair["opponent_platform_team_id"])
         if team_id is None or opponent_team_id is None:
             continue
-        upsert_weekly_matchup(conn, league_id, season, week, team_id, opponent_team_id)
+        upsert_weekly_matchup(
+            conn, league_id, season, week, team_id, opponent_team_id,
+            pair.get("points_for"), pair.get("points_against"),
+        )
 
 
 def sync_box_scores(conn: sqlite3.Connection, league_id: int, espn_league_id: int, season: int, week: int) -> int:
@@ -275,7 +278,10 @@ def sync_weekly_matchups(conn: sqlite3.Connection, league_id: int, espn_league_i
         opponent_team_id = team_id_by_platform_id.get(pair["opponent_platform_team_id"])
         if team_id is None or opponent_team_id is None:
             continue
-        upsert_weekly_matchup(conn, league_id, season, week, team_id, opponent_team_id)
+        upsert_weekly_matchup(
+            conn, league_id, season, week, team_id, opponent_team_id,
+            pair.get("points_for"), pair.get("points_against"),
+        )
         written += 1
 
     conn.commit()
