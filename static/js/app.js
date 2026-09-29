@@ -140,13 +140,17 @@ async function reloadLeagues() {
 // panel in League Settings) so the Weekly tab and its sync status reflect
 // reality on load instead of staying blank until someone types a number in —
 // still just a starting value, same as a manual entry would be, so nothing
-// stops overriding it afterward. Also reorders the section nav by the same
-// signal (see applySectionNavOrder) so whichever section is most relevant
-// right now leads.
+// stops overriding it afterward. Also reorders the section nav (see
+// applySectionNavOrder) and picks the section the app opens on, both off
+// season_active rather than current_week — current_week is deliberately
+// week 1 during the preseason too, when Draft Tool should still lead.
 async function initCurrentWeek() {
   try {
     const seasonInfo = await api.getSeason(state.season);
-    applySectionNavOrder(seasonInfo.current_week != null);
+    applySectionNavOrder(seasonInfo.season_active);
+    if (seasonInfo.season_active) {
+      setActiveSectionButton("in_season");
+    }
     if (seasonInfo.current_week != null) {
       state.week = seasonInfo.current_week;
       weekInput.value = state.week;
@@ -155,6 +159,13 @@ async function initCurrentWeek() {
     // Non-critical — week input just stays blank for manual entry, nav stays
     // in its preseason (Draft Tool-first) default order.
   }
+}
+
+function setActiveSectionButton(section) {
+  state.activeSection = section;
+  document.querySelectorAll(".section-button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.section === section);
+  });
 }
 
 // Draft Tool matters most before the season starts, In-season matters most
@@ -310,9 +321,7 @@ function wireTabGroup(selector, dataAttr, stateKey) {
 function init() {
   document.querySelectorAll(".section-button").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".section-button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.activeSection = btn.dataset.section;
+      setActiveSectionButton(btn.dataset.section);
       renderActive();
       if (state.activeSection === "in_season") {
         updateInSeasonControlsVisibility();
@@ -518,7 +527,11 @@ function init() {
     renderActive();
   });
 
-  Promise.all([reloadLeagues(), initCurrentWeek()]).then(() => {
+  // Sequential, not parallel: initCurrentWeek decides which section opens
+  // (In-season once the season is underway), so it has to land before
+  // reloadLeagues does the first render — otherwise Draft Tool flashes first.
+  initCurrentWeek().then(reloadLeagues).then(() => {
+    updateInSeasonControlsVisibility();
     refreshWeeklySyncStatus();
     refreshRosSyncStatus();
     refreshNewsSyncStatus();

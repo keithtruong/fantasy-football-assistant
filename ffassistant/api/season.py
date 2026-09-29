@@ -17,6 +17,7 @@ def get_season(season):
             "season": season,
             "week1_start_date": week1_start.isoformat() if week1_start else None,
             "current_week": season_mod.smart_current_week(db, season),
+            "season_active": season_mod.is_season_active(db, season),
         }
     )
 
@@ -40,5 +41,6 @@ def put_season(season):
             "season": season,
             "week1_start_date": week1_start.isoformat(),
             "current_week": season_mod.smart_current_week(db, season),
+            "season_active": season_mod.is_season_active(db, season),
         }
     )

@@ -101,5 +101,35 @@ class TestFetchLiveWeek(unittest.TestCase):
         self.assertIsNone(season._fetch_live_week(2026))
 
 
+class TestIsSeasonActive(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.executescript(SCHEMA_PATH.read_text())
+
+    def tearDown(self):
+        self.conn.close()
+
+    @patch("ffassistant.connectors.sleeper.get_nfl_state", return_value={"season": "2026", "season_type": "regular", "week": 4})
+    def test_regular_season_is_active(self, _mock):
+        self.assertTrue(season.is_season_active(self.conn, 2026))
+
+    @patch("ffassistant.connectors.sleeper.get_nfl_state", return_value={"season": "2026", "season_type": "pre", "week": 3})
+    def test_preseason_is_not_active(self, _mock):
+        # Unlike smart_current_week(), which maps preseason to week 1.
+        self.assertFalse(season.is_season_active(self.conn, 2026))
+
+    @patch("ffassistant.connectors.sleeper.get_nfl_state", return_value={"season": "2026", "season_type": "regular", "week": 18})
+    def test_week_past_fantasy_range_is_not_active(self, _mock):
+        self.assertFalse(season.is_season_active(self.conn, 2026))
+
+    @patch("ffassistant.connectors.sleeper.get_nfl_state", side_effect=RuntimeError("network down"))
+    def test_falls_back_to_date_math_when_live_unavailable(self, _mock):
+        with patch.object(season, "current_week", return_value=5):
+            self.assertTrue(season.is_season_active(self.conn, 2026))
+        with patch.object(season, "current_week", return_value=None):
+            self.assertFalse(season.is_season_active(self.conn, 2026))
+
+
 if __name__ == "__main__":
     unittest.main()

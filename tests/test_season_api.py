@@ -4,13 +4,15 @@ from tests.test_api import ApiTestCase
 
 
 class TestSeasonApi(ApiTestCase):
+    @patch("ffassistant.season._fetch_live_season_active", return_value=None)
     @patch("ffassistant.season._fetch_live_week", return_value=None)
-    def test_get_before_anything_set(self, _mock_live):
+    def test_get_before_anything_set(self, _mock_live, _mock_active):
         resp = self.client.get("/api/season/2026")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertIsNone(data["week1_start_date"])
         self.assertIsNone(data["current_week"])
+        self.assertFalse(data["season_active"])
 
     def test_put_then_get_round_trips(self):
         resp = self.client.put("/api/season/2026", json={"week1_start_date": "2026-09-09"})

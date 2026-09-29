@@ -61,6 +61,40 @@ def smart_current_week(conn: sqlite3.Connection, season: int) -> Optional[int]:
     return current_week(conn, season)
 
 
+def is_season_active(conn: sqlite3.Connection, season: int) -> bool:
+    """Whether weeks 1-17 of `season` are actually underway — distinct from
+    smart_current_week() != None, which is deliberately also true during the
+    preseason (it maps preseason to week 1). Drives which section the app
+    leads with and opens on (Draft Tool preseason, In-season once games
+    count). Prefers the same live Sleeper state; falls back to current_week()'s
+    date math, which is already None before week 1 and after week 17.
+    """
+    live = _fetch_live_season_active(season)
+    if live is not None:
+        return live
+    return current_week(conn, season) is not None
+
+
+def _fetch_live_season_active(season: int) -> Optional[bool]:
+    """True/False from Sleeper's live NFL state, or None if it's unreachable
+    or reports a different season (caller falls back to date math)."""
+    try:
+        from ffassistant.connectors.sleeper import get_nfl_state
+
+        state = get_nfl_state()
+    except Exception:
+        return None
+
+    if str(state.get("season")) != str(season):
+        return None
+    week = state.get("week")
+    return (
+        state.get("season_type") == "regular"
+        and isinstance(week, int)
+        and FIRST_WEEK <= week <= LAST_WEEK
+    )
+
+
 def _fetch_live_week(season: int) -> Optional[int]:
     """Best-effort live lookup via Sleeper's public NFL state endpoint — public,
     unauthenticated, and independent of which platforms Keith's leagues are
