@@ -268,6 +268,62 @@ class TestInSeasonRosView(InSeasonTestCase):
         self.assertIn("Great Available RB", names)
 
 
+class TestTradeFinder(InSeasonTestCase):
+    def setUp(self):
+        super().setUp()
+        conn = self._connect_for_seeding()
+        self._seed_in_season(conn)
+        # Mine (team 1): Saquon (ROS RB2) + unranked RB. Team 2: Bijan (ROS RB1).
+        conn.execute(
+            "INSERT INTO rankings (player_id, ranking_type, season, week, scoring_format, rank) "
+            "VALUES (3, 'ros', ?, NULL, 'half_ppr', 1), (2, 'ros', ?, NULL, 'half_ppr', 2), "
+            "(5, 'ros', ?, NULL, 'half_ppr', 3)",
+            (SEASON, SEASON, SEASON),
+        )
+        conn.commit()
+        conn.close()
+
+    def _connect_for_seeding(self):
+        import sqlite3
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
+    def test_returns_every_team_with_ros_ranks(self, _mock_live):
+        resp = self.client.get(f"/api/leagues/1/trade_finder?season={SEASON}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["scoring_format"], "half_ppr")
+        self.assertEqual(len(data["teams"]), 4)
+
+        mine = next(t for t in data["teams"] if t["is_mine"])
+        rb = mine["positions"]["RB"]
+        self.assertEqual([p["full_name"] for p in rb["starters"]], ["Saquon Barkley", "Unranked RB Guy"])
+        self.assertEqual(rb["starters"][0]["pos_rank"], 2)
+        self.assertNotIn("fits", mine)
+
+        rival = next(t for t in data["teams"] if t["team_id"] == 2)
+        self.assertEqual(rival["positions"]["RB"]["starters"][0]["full_name"], "Bijan Robinson")
+        self.assertIn("fits", rival)
+        self.assertIn("record", rival)
+
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
+    def test_excludes_dst_and_k(self, _mock_live):
+        data = self.client.get(f"/api/leagues/1/trade_finder?season={SEASON}").get_json()
+        self.assertEqual(set(data["teams"][0]["positions"]), {"QB", "RB", "WR", "TE"})
+
+    @patch("ffassistant.season._fetch_live_week", return_value=None)
+    def test_requires_my_team_to_be_set(self, _mock_live):
+        conn = self._connect_for_seeding()
+        conn.execute("UPDATE teams SET is_mine = 0 WHERE league_id = 1")
+        conn.commit()
+        conn.close()
+        resp = self.client.get(f"/api/leagues/1/trade_finder?season={SEASON}")
+        self.assertEqual(resp.status_code, 400)
+
+
 if __name__ == "__main__":
     import unittest
 

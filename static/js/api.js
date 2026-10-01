@@ -102,6 +102,7 @@ export const api = {
     request(
       `/api/leagues/${leagueId}/in_season?view=${view}&season=${season}` + (week ? `&week=${week}` : "")
     ),
+  getTradeFinder: (leagueId, season) => request(`/api/leagues/${leagueId}/trade_finder?season=${season}`),
   getStartersAll: (season, week) => request(`/api/starters_all?season=${season}&week=${week}`),
   getExposure: () => request("/api/exposure"),
   getStartersExposure: () => request("/api/exposure/starters"),

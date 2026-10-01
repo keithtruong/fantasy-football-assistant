@@ -1889,3 +1889,99 @@ td.wl-finish-none {
 
 .rankings-sync-status.rankings-sync-warning { color: var(--accent); }
 .rankings-sync-status.rankings-sync-error { color: var(--accent); font-weight: 600; }
+
+/* ---- In-season Trade Finder tab ---- */
+
+.trade-finder-legend {
+  font-size: 12px;
+  color: var(--ink-muted);
+  max-width: 860px;
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.trade-finder-table-scroll {
+  overflow-x: auto;
+  margin-bottom: 18px;
+}
+
+.trade-finder-table {
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  min-width: 620px;
+}
+
+.trade-finder-table th,
+.trade-finder-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.trade-finder-table th { color: var(--ink-muted); font-weight: 600; font-size: 12px; }
+
+.trade-finder-table td a { color: var(--ink-strong); text-decoration: none; font-weight: 600; }
+.trade-finder-table td a:hover { text-decoration: underline; }
+
+.tf-my-row td { background: var(--highlight); }
+
+.tf-record {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-cell { white-space: nowrap; }
+
+.tf-subhead { font-size: 10px; font-weight: 400; margin-top: 2px; white-space: nowrap; }
+
+.tf-rank {
+  display: inline-block;
+  min-width: 34px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.tf-depth { margin-left: 4px; font-size: 11px; opacity: 0.85; }
+
+.tf-strong { background: var(--filled); color: var(--steal); font-weight: 600; }
+.tf-weak { background: var(--tough); color: var(--tough-ink); }
+
+.tf-fit { font-size: 12px; min-width: 150px; }
+.tf-fit-line { color: var(--ink); }
+
+.tf-two-way {
+  display: inline-block;
+  margin-bottom: 2px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--filled);
+  color: var(--steal);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.trade-finder-card { flex-basis: 250px; scroll-margin-top: 12px; }
+
+.tf-player { display: flex; align-items: baseline; gap: 6px; }
+
+.tf-player-rank {
+  flex: 0 0 38px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-player .status-badge { margin-left: auto; }
+
+.tf-depth-first {
+  border-top: 1px dashed var(--line);
+  margin-top: 3px;
+  padding-top: 3px;
+}

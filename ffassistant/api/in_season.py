@@ -101,6 +101,83 @@ def get_in_season(league_id):
     return jsonify(result)
 
 
+@in_season_bp.get("/<int:league_id>/trade_finder")
+def get_trade_finder(league_id):
+    """Every team's QB/RB/WR/TE roster in this league with ROS ranks, plus
+    each team's league rank at each position for projected starters and bench
+    depth, and complementary-needs flags vs. Keith's team — see
+    ffassistant.trade_finder for the scoring. Uses the same ROS scoring format
+    as the Rest-of-season view. Player status comes from the season's current
+    week, since ROS has no week of its own.
+    """
+    from ffassistant.api.leagues import derive_ros_scoring_format
+    from ffassistant.season import smart_current_week
+    from ffassistant.trade_finder import compute_trade_finder
+
+    db = get_db()
+    season = request.args.get("season", type=int) or datetime.date.today().year
+    scoring_format = derive_ros_scoring_format(db, league_id)
+    status_week = smart_current_week(db, season)
+
+    teams = [
+        dict(t)
+        for t in db.execute(
+            "SELECT team_id, team_name, is_mine, wins, losses, ties FROM teams WHERE league_id = ? ORDER BY team_id",
+            (league_id,),
+        )
+    ]
+    if not any(t["is_mine"] for t in teams):
+        abort(400, description="No team is marked as yours in this league yet — set it in League Settings")
+
+    roster_slots = {
+        r["slot_name"]: r["slot_count"]
+        for r in db.execute("SELECT slot_name, slot_count FROM roster_slots WHERE league_id = ?", (league_id,))
+    }
+
+    rank_filter, rank_params = _rank_filter("ros", None, scoring_format)
+    pos_rank_join, pos_rank_params = _pos_rank_join("ros", season, None, scoring_format)
+    placeholders = ",".join("?" for _ in ROS_POSITIONS)
+    rows = db.execute(
+        f"""
+        SELECT rs.team_id, p.player_id, p.full_name, p.position, r.rank, pr.pos_rank, ps.status
+        FROM roster_spots rs
+        JOIN teams t ON t.team_id = rs.team_id
+        JOIN players p ON p.player_id = rs.player_id
+        LEFT JOIN rankings r ON r.player_id = p.player_id
+              AND r.ranking_type = 'ros' AND r.season = ? {rank_filter}
+        LEFT JOIN player_status ps ON ps.player_id = p.player_id AND ps.season = ? AND ps.week = ?
+        {pos_rank_join}
+        WHERE t.league_id = ? AND p.position IN ({placeholders})
+        """,
+        (season, *rank_params, season, status_week, *pos_rank_params, league_id, *ROS_POSITIONS),
+    ).fetchall()
+    players_by_team = {t["team_id"]: [] for t in teams}
+    for r in rows:
+        players_by_team[r["team_id"]].append(dict(r))
+    for t in teams:
+        t["players"] = players_by_team[t["team_id"]]
+
+    pool_size_by_position = {
+        r["position"]: r["n"]
+        for r in db.execute(
+            f"""
+            SELECT p.position, COUNT(*) AS n FROM rankings r
+            JOIN players p ON p.player_id = r.player_id
+            WHERE r.ranking_type = 'ros' AND r.season = ? AND r.rank IS NOT NULL {rank_filter}
+            GROUP BY p.position
+            """,
+            (season, *rank_params),
+        )
+    }
+
+    result = compute_trade_finder(roster_slots, teams, pool_size_by_position)
+    records = {t["team_id"]: {"wins": t["wins"], "losses": t["losses"], "ties": t["ties"]} for t in teams}
+    for team in result["teams"]:
+        team["record"] = records[team["team_id"]]
+    result["scoring_format"] = scoring_format
+    return jsonify(result)
+
+
 def _get_starters(db, league_id, season, week):
     """Optimal starting lineup for Keith's own team this week — see
     _compute_starters_for_league for the actual computation."""

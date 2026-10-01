@@ -284,10 +284,11 @@ async function refreshNewsSyncStatus() {
 // the exact same weekly rankings data (including the FLEX/SUPER_FLEX combined
 // lists), so it shares Weekly's refresh button rather than getting its own.
 // Player news isn't week/format-scoped, so it's shown for Weekly or ROS —
-// Starters has no news card of its own.
+// Starters has no news card of its own. Trade Finder reads the same ROS
+// rankings as Rest of Season, so it shares ROS's refresh button.
 function updateInSeasonControlsVisibility() {
   const showWeekly = state.inSeasonTab === "weekly" || state.inSeasonTab === "starters";
-  const showRos = state.inSeasonTab === "ros";
+  const showRos = state.inSeasonTab === "ros" || state.inSeasonTab === "trade_finder";
   const isStarters = state.inSeasonTab === "starters";
 
   // Starters shows every one of Keith's teams across all leagues at once
