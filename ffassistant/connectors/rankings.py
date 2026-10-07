@@ -32,6 +32,7 @@ _HEADERS = {
 }
 
 _JSON_MARKER = "JSON.parse(`{"
+_JSON_STRING_MARKER = 'JSON.parse("{'
 
 # Tier pages are editorial copy, occasionally pasted in from a Windows-1252
 # source (Word/Google Docs smart quotes) into an otherwise UTF-8 page. A lone
@@ -67,7 +68,23 @@ def _extract_rows(html: str) -> list[dict]:
     """Pull the embedded rows array out of the page's server-rendered HTML."""
     start = html.find(_JSON_MARKER)
     if start == -1:
-        raise ValueError("Ranking data marker not found in page — session cookie may be invalid/expired")
+        # The provider also (inconsistently, page to page and republish to
+        # republish) embeds the same payload as an escaped double-quoted string.
+        start = html.find(_JSON_STRING_MARKER)
+        if start == -1:
+            raise ValueError(
+                "Ranking data marker not found in page — session cookie may be "
+                "invalid/expired, or the page's data format changed"
+            )
+        quote_start = start + len("JSON.parse(")
+        # A JS double-quoted string literal is valid JSON string syntax for
+        # this payload, so raw_decode unescapes it and stops at its closing quote.
+        payload, _ = json.JSONDecoder().raw_decode(html, quote_start)
+        data = json.loads(payload)
+        rows = data.get("rows", [])
+        if not rows:
+            raise ValueError("No ranking rows found — session cookie may be invalid/expired")
+        return rows
 
     json_start = html.index("{", start)
 

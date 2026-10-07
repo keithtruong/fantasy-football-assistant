@@ -36,6 +36,14 @@ class TestExtractRows(unittest.TestCase):
         rows = rankings._extract_rows(html)
         self.assertEqual(rows[0]["player"], "Player {with} braces")
 
+    def test_extracts_rows_from_escaped_string_form(self):
+        # Same payload, embedded as JSON.parse("{\"rows\":...}") instead of a backtick literal.
+        literal = json.dumps(json.dumps({"rows": FAKE_ROWS}))
+        html = f"<html><script>window.SOME_DATASET_123 = JSON.parse({literal})</script></html>"
+        rows = rankings._extract_rows(html)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["player"], "Ja'Marr Chase")
+
 
 class TestGetDraftRankings(unittest.TestCase):
     @patch("ffassistant.connectors.rankings.get_rankings_config")
