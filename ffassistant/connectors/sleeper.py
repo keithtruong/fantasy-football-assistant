@@ -186,19 +186,20 @@ def get_roster_players(
 # Sleeper's projections carry pre-computed fantasy points for the three
 # standard reception scorings — keyed by this project's reception-scoring
 # vocabulary (see ffassistant.api.leagues.derive_reception_scoring).
-_PROJECTION_POINTS_KEY = {"full_ppr": "pts_ppr", "half_ppr": "pts_half_ppr", "non_ppr": "pts_std"}
+PROJECTION_POINTS_KEY = {"full_ppr": "pts_ppr", "half_ppr": "pts_half_ppr", "non_ppr": "pts_std"}
 
 
-def get_weekly_projections(season: int, week: int, reception_scoring: str) -> dict[str, float]:
-    """{sleeper_player_id: projected fantasy points} for one week.
+def get_projection_rows(season: int, week: int) -> list[dict]:
+    """Sleeper's raw weekly projection rows: each has player_id, a `player`
+    block (first_name/last_name/position/team) and `stats` with
+    pts_ppr/pts_half_ppr/pts_std already computed.
 
     Sleeper's documented API has no projections; this is the undocumented
-    endpoint its own app uses (confirmed live 2026-10-10: ~3,300 rows with
-    pts_ppr/pts_half_ppr/pts_std already computed). Those are standard
-    scoring only — a league with custom rules (6-pt passing TDs, etc.) will
-    be a little off, acceptable for a live-projection estimate. Being
-    undocumented, it could change without notice; callers should treat a
-    failure here as "no projections", not a fatal error.
+    endpoint its own app uses (confirmed live 2026-10-10: ~3,300 rows). Those
+    are standard scoring only — a league with custom rules (6-pt passing TDs,
+    etc.) will be a little off, acceptable for a live-projection estimate.
+    Being undocumented, it could change without notice; callers should treat
+    a failure here as "no projections", not a fatal error.
     """
     resp = requests.get(
         f"https://api.sleeper.app/projections/nfl/{season}/{week}",
@@ -206,10 +207,15 @@ def get_weekly_projections(season: int, week: int, reception_scoring: str) -> di
         timeout=30,
     )
     resp.raise_for_status()
-    key = _PROJECTION_POINTS_KEY[reception_scoring]
+    return resp.json()
+
+
+def get_weekly_projections(season: int, week: int, reception_scoring: str) -> dict[str, float]:
+    """{sleeper_player_id: projected fantasy points} for one week (see get_projection_rows)."""
+    key = PROJECTION_POINTS_KEY[reception_scoring]
     return {
         str(row["player_id"]): row["stats"][key]
-        for row in resp.json()
+        for row in get_projection_rows(season, week)
         if row.get("stats", {}).get(key) is not None
     }
 

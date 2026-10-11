@@ -62,6 +62,27 @@ def _prepare_platform_connections(leagues: list[dict]) -> None:
             pass
 
 
+def _yahoo_projection_lookups(leagues: list[dict], season: int, week: int) -> dict:
+    """{reception_scoring: projection_lookup} for the Yahoo leagues' scorings,
+    from one Sleeper projections call. Yahoo sends no per-player projections
+    (every projected-stats path is rejected, rechecked mid-game 2026-10-11),
+    and its team projection doesn't move during games, so its live
+    projection is computed like Sleeper's. Empty on any failure — the cards
+    then just show "—" for live, as before.
+    """
+    scorings = {lg["reception_scoring"] for lg in leagues if lg["platform"] == "yahoo"}
+    if not scorings:
+        return {}
+    from ffassistant.connectors.sleeper import PROJECTION_POINTS_KEY, get_projection_rows
+    from ffassistant.scoreboard import projection_lookup
+
+    try:
+        rows = get_projection_rows(season, week)
+    except Exception:
+        return {}
+    return {s: projection_lookup(rows, PROJECTION_POINTS_KEY[s]) for s in scorings}
+
+
 @scoreboard_bp.get("/scoreboard")
 def get_scoreboard():
     """Keith's matchup in every active platform league, live: each side's
@@ -76,7 +97,7 @@ def get_scoreboard():
     """
     from ffassistant.api.leagues import derive_reception_scoring
     from ffassistant.connectors.espn import get_nfl_scoreboard
-    from ffassistant.scoreboard import build_side, parse_nfl_games
+    from ffassistant.scoreboard import attach_projections, build_side, parse_nfl_games
 
     db = get_db()
     season = request.args.get("season", type=int) or datetime.date.today().year
@@ -106,12 +127,19 @@ def get_scoreboard():
     }
 
     _prepare_platform_connections(leagues)
+    yahoo_lookups = _yahoo_projection_lookups(leagues, season, week)
 
     def fetch(league):
         try:
-            return _fetch_live_matchup(league, season, week), None
+            live = _fetch_live_matchup(league, season, week)
         except Exception as e:  # one league's failure shouldn't sink the board
             return None, str(e) or type(e).__name__
+        lookup = yahoo_lookups.get(league["reception_scoring"]) if league["platform"] == "yahoo" else None
+        if live and lookup:
+            for side in (live["me"], live["opponent"]):
+                if side is not None:
+                    attach_projections(side["starters"], lookup)
+        return live, None
 
     with ThreadPoolExecutor(max_workers=max(1, len(leagues))) as pool:
         nfl_future = pool.submit(get_nfl_scoreboard, season, week)

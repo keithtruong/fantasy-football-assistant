@@ -9,6 +9,7 @@ final results. Keeping frequent Sunday refreshes away from SQLite also keeps
 them clear of the mid-write locking issue described in CLAUDE.md.
 """
 
+from ffassistant.name_matching import normalize
 from ffassistant.nfl_teams import canonical_team_code
 
 GAME_SECONDS = 60 * 60
@@ -53,7 +54,54 @@ def game_state(nfl_team: str | None, games: dict) -> str:
     return game["state"] if game else "none"
 
 
-def computed_live_projection(starters: list[dict], games: dict) -> float | None:
+def projection_lookup(rows: list[dict], points_key: str) -> dict:
+    """Name -> projected points from Sleeper's weekly projection rows (see
+    ffassistant.connectors.sleeper.get_projection_rows), for platforms that
+    send no per-player projections of their own (Yahoo). Keys:
+    ("name_team", normalized name, team code), ("name", normalized name) only
+    when that name is unique this week, and ("dst", team code) for defenses.
+    Deterministic name matching, same normalize() as the rest of the project.
+    """
+    lookup, name_counts = {}, {}
+    for row in rows:
+        points = (row.get("stats") or {}).get(points_key)
+        player = row.get("player") or {}
+        if points is None:
+            continue
+        team = canonical_team_code(player.get("team") or row.get("team"))
+        if player.get("position") == "DEF":
+            if team:
+                lookup[("dst", team)] = points
+            continue
+        name = normalize(f"{player.get('first_name', '')} {player.get('last_name', '')}")
+        if not name:
+            continue
+        if team:
+            lookup[("name_team", name, team)] = points
+        name_counts[name] = name_counts.get(name, 0) + 1
+        lookup[("name", name)] = points
+    for name, count in name_counts.items():
+        if count > 1:
+            del lookup[("name", name)]
+    return lookup
+
+
+def attach_projections(starters: list[dict], lookup: dict) -> None:
+    """Fills each starter's missing `projected` from a projection_lookup, in
+    place: name + team first, then name alone (a mid-week trade), defenses by
+    team. Unmatched starters stay None."""
+    for player in starters:
+        if player.get("projected") is not None:
+            continue
+        team = canonical_team_code(player.get("nfl_team")) if player.get("nfl_team") else None
+        if player.get("position") == "DST":
+            player["projected"] = lookup.get(("dst", team))
+            continue
+        name = normalize(player.get("full_name") or "")
+        player["projected"] = lookup.get(("name_team", name, team), lookup.get(("name", name)))
+
+
+def computed_live_projection(starters: list[dict], games: dict, scale: float = 1.0) -> float | None:
     """Live projection for a side whose platform doesn't send one: actual
     points for finished games, the projection for games not started yet, and
     actual + the projection pro-rated by time left for games in progress.
@@ -62,13 +110,15 @@ def computed_live_projection(starters: list[dict], games: dict) -> float | None:
     that's really just the current score. Also None without NFL game state
     (the NFL scoreboard call failed), since every starter would otherwise
     look finished.
+
+    `scale` multiplies every player projection — see build_side for why.
     """
     if not games or not any(p.get("projected") is not None for p in starters):
         return None
     total = 0.0
     for player in starters:
         points = player.get("points") or 0.0
-        projected = player.get("projected") or 0.0
+        projected = (player.get("projected") or 0.0) * scale
         game = games.get(canonical_team_code(player.get("nfl_team"))) if player.get("nfl_team") else None
         if game is None or game["state"] == "post":
             total += points
@@ -90,6 +140,13 @@ def build_side(side: dict, games: dict) -> dict:
     projections; live projection falls back to computed_live_projection.
     Starters are tagged with their game state and split into playing now /
     yet to play / done counts.
+
+    When the platform sends a team projection but no live one (Yahoo — its
+    team_projected_points stays fixed during games, confirmed 2026-10-11),
+    the per-player projections come from another source on other scoring, so
+    they're scaled to add up to the platform's own number. Before kickoff the
+    live projection then equals the original exactly, and the green/red trend
+    reflects only what's happened in games, not two sources disagreeing.
     """
     starters = []
     for player in side["starters"]:
@@ -97,13 +154,17 @@ def build_side(side: dict, games: dict) -> dict:
         game = games.get(canonical_team_code(player.get("nfl_team"))) if player.get("nfl_team") else None
         starters.append({**player, "game_state": state, "game_detail": game["detail"] if game else None})
 
+    player_total = sum(p.get("projected") or 0.0 for p in starters)
     projected = side.get("projected")
+    scale = 1.0
     if projected is None and any(p.get("projected") is not None for p in starters):
-        projected = round(sum(p.get("projected") or 0.0 for p in starters), 2)
+        projected = round(player_total, 2)
+    elif projected is not None and player_total > 0:
+        scale = projected / player_total
 
     live_projected = side.get("live_projected")
     if live_projected is None:
-        live_projected = computed_live_projection(starters, games)
+        live_projected = computed_live_projection(starters, games, scale)
 
     playing = [p for p in starters if p["game_state"] == "in"]
     playing.sort(key=lambda p: -(p.get("points") or 0.0))

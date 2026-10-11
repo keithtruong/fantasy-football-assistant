@@ -2,7 +2,13 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from ffassistant.scoreboard import build_side, computed_live_projection, parse_nfl_games
+from ffassistant.scoreboard import (
+    attach_projections,
+    build_side,
+    computed_live_projection,
+    parse_nfl_games,
+    projection_lookup,
+)
 from tests.test_api import ApiTestCase
 
 
@@ -28,6 +34,44 @@ NFL = {
 
 def starter(name, team, points, projected):
     return {"full_name": name, "position": "WR", "nfl_team": team, "points": points, "projected": projected}
+
+
+def proj_row(first, last, position, team, pts):
+    return {
+        "player_id": f"{first}{last}",
+        "player": {"first_name": first, "last_name": last, "position": position, "team": team},
+        "stats": {"pts_half_ppr": pts},
+    }
+
+
+PROJ_ROWS = [
+    proj_row("Amon-Ra", "St. Brown", "WR", "DET", 16.0),
+    proj_row("Mike", "Williams", "WR", "NYJ", 7.0),
+    proj_row("Mike", "Williams", "WR", "PIT", 3.0),  # same name twice -> no name-only fallback
+    proj_row("Josh", "Jacobs", "RB", "GB", 14.0),
+    proj_row("Dallas", "Cowboys", "DEF", "DAL", 6.0),
+    proj_row("Washington", "Commanders", "DEF", "WAS", 5.0),
+]
+
+
+class TestProjectionMatching(unittest.TestCase):
+    def test_matches_by_name_team_name_alone_and_defense(self):
+        lookup = projection_lookup(PROJ_ROWS, "pts_half_ppr")
+        starters = [
+            starter("Amon-Ra St. Brown", "Det", 0.0, None),  # Yahoo title-case team, punctuation
+            starter("Josh Jacobs", "MIN", 0.0, None),  # traded mid-week -> unique name still matches
+            starter("Mike Williams", "NYJ", 0.0, None),
+            starter("Mike Williams", "LAC", 0.0, None),  # ambiguous name, wrong team -> unmatched
+            {**starter("Washington", "WSH", 0.0, None), "position": "DST"},
+            starter("Nobody Atall", "DAL", 0.0, None),
+        ]
+        attach_projections(starters, lookup)
+        self.assertEqual([p["projected"] for p in starters], [16.0, 14.0, 7.0, None, 5.0, None])
+
+    def test_keeps_existing_projection(self):
+        starters = [starter("Josh Jacobs", "GB", 0.0, 9.0)]
+        attach_projections(starters, projection_lookup(PROJ_ROWS, "pts_half_ppr"))
+        self.assertEqual(starters[0]["projected"], 9.0)
 
 
 class TestParseNflGames(unittest.TestCase):
@@ -93,6 +137,20 @@ class TestBuildSide(unittest.TestCase):
         self.assertEqual(built["playing_now"][0]["game_detail"], "5:12 - 3rd")
 
 
+    def test_player_projections_scaled_to_platform_team_projection(self):
+        # Yahoo: a fixed team projection, per-player estimates from another source.
+        side = {
+            "platform_team_id": "1", "score": 0.0, "projected": 60.0, "live_projected": None,
+            "starters": [starter("Later", "PHI", 0.0, 20.0), starter("Later2", "WSH", 0.0, 20.0)],
+        }
+        built = build_side(side, parse_nfl_games(NFL))
+        self.assertEqual((built["projected"], built["live_projected"]), (60.0, 60.0))  # pre-game: equal
+
+        side["starters"] = [starter("Done", "DAL", 25.0, 20.0), starter("Later", "PHI", 0.0, 20.0)]
+        built = build_side(side, parse_nfl_games(NFL))
+        self.assertEqual(built["live_projected"], 55.0)  # 25 actual + 20 * 1.5
+
+
 class TestScoreboardApi(ApiTestCase):
     """/api/scoreboard — base seed's league 1 is Sleeper with team 1 mine;
     platform calls are mocked, nothing touches the network."""
@@ -140,6 +198,31 @@ class TestScoreboardApi(ApiTestCase):
         self.assertEqual(ok["me"]["team_name"], self._team_name(1))
         self.assertEqual(ok["opponent"]["team_name"], self._team_name(2))
         self.assertEqual(ok["me"]["live_projected"], 26.5)  # DAL game final
+
+    def test_yahoo_starters_get_projections_from_sleeper(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("UPDATE leagues SET platform = 'yahoo' WHERE league_id = 1")
+        conn.commit()
+        conn.close()
+
+        def fetch(league, season, week):
+            if league["platform"] == "espn":
+                raise RuntimeError("cookie expired")
+            side = lambda tid: {  # noqa: E731
+                "platform_team_id": tid, "score": 0.0, "projected": 32.0, "live_projected": None,
+                "starters": [starter("Amon-Ra St. Brown", "PHI", 0.0, None)],  # traded; PHI not kicked off
+            }
+            return {"me": side("1"), "opponent": side("2")}
+
+        rows = [{**r, "stats": {k: r["stats"]["pts_half_ppr"] for k in ("pts_ppr", "pts_half_ppr", "pts_std")}} for r in PROJ_ROWS]
+        with patch("ffassistant.api.scoreboard._fetch_live_matchup", side_effect=fetch), patch(
+            "ffassistant.connectors.espn.get_nfl_scoreboard", return_value=NFL
+        ), patch("ffassistant.connectors.sleeper.get_projection_rows", return_value=rows), patch(
+            "ffassistant.api.scoreboard._prepare_platform_connections"
+        ):
+            data = self.client.get("/api/scoreboard?season=2026&week=5").get_json()
+        me = next(m for m in data["matchups"] if m["league_name"] == "Test League")["me"]
+        self.assertEqual(me["live_projected"], 32.0)  # matched 16.0, scaled to the 32.0 team projection
 
     def test_week_required(self):
         self.assertEqual(self.client.get("/api/scoreboard?season=2026").status_code, 400)

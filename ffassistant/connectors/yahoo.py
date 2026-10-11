@@ -298,10 +298,10 @@ def get_live_matchup(
     call per side (see _live_starters).
 
     Yahoo's scoreboard sends one team projection and no per-player ones. It's
-    used as `projected`; whether it also updates live during games is still
-    unconfirmed, so `live_projected` is left None (shown as "—") rather than
-    presenting a possibly-static number as live. None if Keith's team has no
-    head-to-head matchup (e.g. the Guillotine league).
+    used as `projected`; it stays fixed during games (confirmed 2026-10-11),
+    so `live_projected` is None here and the Scoreboard computes it from
+    Sleeper per-player projections (see ffassistant.api.scoreboard). None if
+    Keith's team has no head-to-head matchup (e.g. the Guillotine league).
     """
     league = _connect(league_id, oauth_path, store_token)
     raw = league.matchups(week=week)
