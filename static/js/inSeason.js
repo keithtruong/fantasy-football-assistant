@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { positionColor } from "./positions.js";
 import { renderScheduleTab } from "./schedule.js";
+import { renderScoreboardTab } from "./scoreboard.js";
 import { renderStartersTab } from "./starters.js";
 import { renderTradeFinderTab } from "./tradeFinder.js";
 
@@ -8,7 +9,12 @@ const WEEKLY_POSITIONS = ["QB", "RB", "WR", "TE", "DST", "K"];
 const ROS_POSITIONS = ["QB", "RB", "WR", "TE"];
 
 export async function renderInSeasonView(container, state) {
-  const view = state.inSeasonTab; // "weekly" | "starters" | "ros" | "trade_finder" | "schedule"
+  const view = state.inSeasonTab; // "scoreboard" | "weekly" | "starters" | "ros" | "trade_finder" | "schedule"
+
+  if (view === "scoreboard") {
+    await renderScoreboardTab(container, state);
+    return;
+  }
 
   if (view === "schedule") {
     await renderScheduleTab(container, state);

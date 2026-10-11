@@ -104,6 +104,7 @@ export const api = {
     ),
   getTradeFinder: (leagueId, season) => request(`/api/leagues/${leagueId}/trade_finder?season=${season}`),
   getStartersAll: (season, week) => request(`/api/starters_all?season=${season}&week=${week}`),
+  getScoreboard: (season, week) => request(`/api/scoreboard?season=${season}&week=${week}`),
   getExposure: () => request("/api/exposure"),
   getStartersExposure: () => request("/api/exposure/starters"),
   getSchedule: (season) => request(`/api/schedule?season=${season}`),

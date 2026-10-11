@@ -181,3 +181,92 @@ def get_roster_players(
             }
         )
     return resolved
+
+
+# Sleeper's projections carry pre-computed fantasy points for the three
+# standard reception scorings — keyed by this project's reception-scoring
+# vocabulary (see ffassistant.api.leagues.derive_reception_scoring).
+_PROJECTION_POINTS_KEY = {"full_ppr": "pts_ppr", "half_ppr": "pts_half_ppr", "non_ppr": "pts_std"}
+
+
+def get_weekly_projections(season: int, week: int, reception_scoring: str) -> dict[str, float]:
+    """{sleeper_player_id: projected fantasy points} for one week.
+
+    Sleeper's documented API has no projections; this is the undocumented
+    endpoint its own app uses (confirmed live 2026-10-10: ~3,300 rows with
+    pts_ppr/pts_half_ppr/pts_std already computed). Those are standard
+    scoring only — a league with custom rules (6-pt passing TDs, etc.) will
+    be a little off, acceptable for a live-projection estimate. Being
+    undocumented, it could change without notice; callers should treat a
+    failure here as "no projections", not a fatal error.
+    """
+    resp = requests.get(
+        f"https://api.sleeper.app/projections/nfl/{season}/{week}",
+        params={"season_type": "regular", "position[]": ["QB", "RB", "WR", "TE", "K", "DEF"]},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    key = _PROJECTION_POINTS_KEY[reception_scoring]
+    return {
+        str(row["player_id"]): row["stats"][key]
+        for row in resp.json()
+        if row.get("stats", {}).get(key) is not None
+    }
+
+
+def get_live_matchup(
+    sleeper_league_id: str, season: int, week: int, my_platform_team_id: str, reception_scoring: str
+) -> dict | None:
+    """Keith's matchup this week, live, for the Scoreboard tab — same shape as
+    ffassistant.connectors.espn.get_live_matchup. Sleeper sends no team
+    projections, so `projected`/`live_projected` are None and the Scoreboard
+    computes both from get_weekly_projections (see
+    ffassistant.scoreboard.build_side). An empty starter slot is "0" in
+    Sleeper's starters list and is skipped.
+    """
+    resp = requests.get(f"{BASE_URL}/league/{sleeper_league_id}/matchups/{week}", timeout=30)
+    resp.raise_for_status()
+    rows = resp.json()
+
+    mine = next((r for r in rows if str(r["roster_id"]) == str(my_platform_team_id)), None)
+    if mine is None:
+        return None
+    other = None
+    if mine.get("matchup_id") is not None:
+        other = next(
+            (r for r in rows if r.get("matchup_id") == mine["matchup_id"] and r["roster_id"] != mine["roster_id"]),
+            None,
+        )
+
+    players_lookup = get_players_lookup()
+    try:
+        projections = get_weekly_projections(season, week, reception_scoring)
+    except (requests.RequestException, KeyError, ValueError):
+        projections = {}
+
+    def side(row):
+        starters = []
+        for pid, points in zip(row.get("starters") or [], row.get("starters_points") or []):
+            if pid == "0":
+                continue
+            info = players_lookup.get(pid, {})
+            full_name = info.get("full_name") or f"{info.get('first_name', '')} {info.get('last_name', '')}".strip()
+            starters.append(
+                {
+                    "full_name": full_name or pid,
+                    "position": _map_position(info.get("position")),
+                    # A DEF's player id is its team code; its lookup entry has no team.
+                    "nfl_team": info.get("team") or (pid if info.get("position") == "DEF" else None),
+                    "points": points,
+                    "projected": projections.get(pid),
+                }
+            )
+        return {
+            "platform_team_id": str(row["roster_id"]),
+            "score": row.get("points"),
+            "projected": None,
+            "live_projected": None,
+            "starters": starters,
+        }
+
+    return {"me": side(mine), "opponent": side(other) if other else None}

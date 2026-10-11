@@ -259,3 +259,70 @@ def get_free_agent_scores(
         }
         for player in free_agents
     ]
+
+
+def get_live_matchup(
+    league_id: int, year: int, week: int, my_platform_team_id: str,
+    espn_s2: str | None = None, swid: str | None = None,
+) -> dict | None:
+    """Keith's matchup this week, live, for the Scoreboard tab: {"me": side,
+    "opponent": side or None}, each side {platform_team_id, score, projected,
+    live_projected, starters: [{full_name, position, nfl_team, points,
+    projected}]}. None if Keith's team isn't in any box score this week.
+
+    `live_projected` is ESPN's own live team projection (totalProjectedPointsLive,
+    exposed by espn_api as home_projected/away_projected) — it already blends
+    actual points with what's still to come. `projected` is left None so the
+    Scoreboard falls back to the sum of starters' pre-game projected_points
+    (see ffassistant.scoreboard.build_side). Same box_scores() call as
+    get_box_scores, so one fetch covers both sides' starters and scores.
+    """
+    league = _connect(league_id, year, espn_s2, swid)
+    for box_score in league.box_scores(week=week):
+        sides = []
+        for prefix in ("home", "away"):
+            team = getattr(box_score, f"{prefix}_team", None)
+            if not team:
+                sides.append(None)  # bye — the empty side of the pairing
+                continue
+            lineup = getattr(box_score, f"{prefix}_lineup", None) or []
+            sides.append(
+                {
+                    "platform_team_id": str(team.team_id),
+                    "score": getattr(box_score, f"{prefix}_score", None),
+                    "projected": None,
+                    "live_projected": getattr(box_score, f"{prefix}_projected", None),
+                    "starters": [
+                        {
+                            "full_name": player.name,
+                            "position": _map_position(player.position),
+                            "nfl_team": player.proTeam,
+                            "points": player.points,
+                            "projected": getattr(player, "projected_points", None),
+                        }
+                        for player in lineup
+                        if player.slot_position not in ("BE", "IR")
+                    ],
+                }
+            )
+        for mine, other in ((sides[0], sides[1]), (sides[1], sides[0])):
+            if mine and mine["platform_team_id"] == str(my_platform_team_id):
+                return {"me": mine, "opponent": other}
+    return None
+
+
+def get_nfl_scoreboard(season: int, week: int) -> dict:
+    """ESPN's public NFL scoreboard for one regular-season week — every game's
+    state (pre/in/post), period, and clock in one unauthenticated call. Not
+    tied to Keith's fantasy leagues at all; the Scoreboard tab uses it to tell
+    which starters on every platform are playing right now (see
+    ffassistant.scoreboard.parse_nfl_games)."""
+    import requests
+
+    resp = requests.get(
+        "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+        params={"dates": season, "seasontype": 2, "week": week},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()

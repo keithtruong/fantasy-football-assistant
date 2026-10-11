@@ -289,15 +289,15 @@ async function refreshNewsSyncStatus() {
 function updateInSeasonControlsVisibility() {
   const showWeekly = state.inSeasonTab === "weekly" || state.inSeasonTab === "starters";
   const showRos = state.inSeasonTab === "ros" || state.inSeasonTab === "trade_finder";
-  const isStarters = state.inSeasonTab === "starters";
+  const isAllLeagues = state.inSeasonTab === "starters" || state.inSeasonTab === "scoreboard";
 
-  // Starters shows every one of Keith's teams across all leagues at once
-  // (see renderStartersTab), not just the currently-selected one, so the
-  // league selector and the "refresh this league" control have nothing to
-  // scope to here.
-  leagueSelectRow.style.display = isStarters ? "none" : "";
-  refreshLeagueButton.style.display = isStarters ? "none" : "";
-  refreshLeagueStatus.style.display = isStarters ? "none" : "";
+  // Starters and Scoreboard show every one of Keith's teams across all
+  // leagues at once (see renderStartersTab/renderScoreboardTab), not just the
+  // currently-selected one, so the league selector and the "refresh this
+  // league" control have nothing to scope to there.
+  leagueSelectRow.style.display = isAllLeagues ? "none" : "";
+  refreshLeagueButton.style.display = isAllLeagues ? "none" : "";
+  refreshLeagueStatus.style.display = isAllLeagues ? "none" : "";
 
   refreshWeeklyRankingsButton.style.display = showWeekly ? "" : "none";
   weeklyRankingsSyncStatus.style.display = showWeekly ? "" : "none";

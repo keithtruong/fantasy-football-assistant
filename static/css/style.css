@@ -1985,3 +1985,61 @@ td.wl-finish-none {
   margin-top: 3px;
   padding-top: 3px;
 }
+
+/* ---- In-season Scoreboard ---- */
+
+.scoreboard-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.scoreboard-warning { color: var(--tough-ink); font-size: 13px; margin: 0 0 10px; }
+
+.scoreboard-card { flex-basis: 290px; border-top-width: 3px; }
+.scoreboard-card.scoreboard-ahead { border-top-color: var(--steal); }
+.scoreboard-card.scoreboard-behind { border-top-color: var(--tough-ink); }
+
+.scoreboard-side-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scoreboard-team-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scoreboard-side-mine .scoreboard-team-name { font-weight: 600; color: var(--ink-strong); }
+.scoreboard-score { font-size: 22px; font-weight: 700; color: var(--ink-strong); font-variant-numeric: tabular-nums; }
+
+.scoreboard-side-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.scoreboard-proj,
+.scoreboard-counts { font-size: 11.5px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.scoreboard-counts { overflow: hidden; text-overflow: ellipsis; }
+.scoreboard-proj { flex-shrink: 0; }
+
+.scoreboard-live { font-weight: 600; }
+.scoreboard-live-up { color: var(--steal); }
+.scoreboard-live-down { color: var(--tough-ink); }
+
+.scoreboard-divider { border-top: 1px solid var(--line); margin: 10px 0; }
+
+.scoreboard-playing { list-style: none; margin: 6px 0 0; padding: 0; }
+
+.scoreboard-player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+
+.scoreboard-player .position-chip { font-size: 10px; min-width: 30px; text-align: center; }
+.scoreboard-player-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scoreboard-player-points { font-variant-numeric: tabular-nums; color: var(--ink-strong); }

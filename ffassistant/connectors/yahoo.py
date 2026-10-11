@@ -56,16 +56,20 @@ def _map_status(status: str) -> str:
     return _STATUS_MAP.get(status, "questionable" if status else "healthy")
 
 
-def _connect_game(oauth_path=YAHOO_OAUTH_PATH):
+def _connect_game(oauth_path=YAHOO_OAUTH_PATH, store_token: bool = True):
+    """`store_token=False` keeps yahoo_oauth from rewriting the token file —
+    which it otherwise does on every session open, not just on refresh, so
+    sessions opened in parallel can read the file mid-write. See
+    ffassistant.api.scoreboard._prepare_platform_connections."""
     from yahoo_oauth import OAuth2  # lazy import — optional heavy dependency
     import yahoo_fantasy_api as yfa
 
-    sc = OAuth2(None, None, from_file=str(oauth_path))
+    sc = OAuth2(None, None, from_file=str(oauth_path), store_file=store_token)
     return yfa.Game(sc, "nfl")
 
 
-def _connect(league_id: str, oauth_path=YAHOO_OAUTH_PATH):
-    return _connect_game(oauth_path).to_league(league_id)
+def _connect(league_id: str, oauth_path=YAHOO_OAUTH_PATH, store_token: bool = True):
+    return _connect_game(oauth_path, store_token).to_league(league_id)
 
 
 def list_league_ids(season: int | None = None, oauth_path=YAHOO_OAUTH_PATH) -> list[str]:
@@ -238,3 +242,98 @@ def _get_pro_teams(league, player_ids: list[int]) -> dict[int, str]:
         return {}
     details = league.player_details(player_ids)
     return {int(d["player_id"]): d.get("editorial_team_abbr") for d in details}
+
+
+def _merge_yahoo_items(items) -> dict:
+    """Yahoo's JSON spreads one object's fields across a list of single-key
+    dicts (with stray empty lists mixed in); flatten that into one dict."""
+    merged = {}
+    for item in items:
+        if isinstance(item, dict):
+            merged.update(item)
+    return merged
+
+
+def _live_starters(league, team_key: str, week: int) -> list[dict]:
+    """That team's starters for the week with their actual points so far, in
+    one call: roster;week=N with each player's week-N stats attached. The
+    stats sub-resource returns player_points already scored by the league's
+    own rules, and the player block carries editorial_team_abbr, so neither
+    player_details() nor our own scoring math is needed here. (Yahoo rejects
+    type=projected_week on this path — confirmed 2026-10-10 — so there's no
+    per-player projection to be had alongside.)
+    """
+    raw = league.yhandler.get(f"team/{team_key}/roster;week={week}/players/stats;type=week;week={week}")
+    players = raw["fantasy_content"]["team"][1]["roster"]["0"]["players"]
+
+    starters = []
+    for key, entry in players.items():
+        if key == "count":
+            continue
+        parts = entry["player"]
+        info = _merge_yahoo_items(parts[0])
+        rest = _merge_yahoo_items(parts[1:])
+        selected = _merge_yahoo_items(rest.get("selected_position", [])).get("position")
+        if selected == "BN" or (selected or "").startswith("IR"):
+            continue
+        points = rest.get("player_points", {}).get("total")
+        starters.append(
+            {
+                "full_name": info["name"]["full"],
+                "position": "DST" if info.get("display_position") == "DEF" else info.get("display_position"),
+                "nfl_team": info.get("editorial_team_abbr"),
+                "points": float(points) if points is not None else None,
+                "projected": None,
+            }
+        )
+    return starters
+
+
+def get_live_matchup(
+    league_id: str, week: int, my_platform_team_id: str, oauth_path=YAHOO_OAUTH_PATH, store_token: bool = True
+) -> dict | None:
+    """Keith's matchup this week, live, for the Scoreboard tab — same shape as
+    ffassistant.connectors.espn.get_live_matchup. Three calls: the scoreboard
+    (both teams' score + Yahoo's team_projected_points) and one roster+stats
+    call per side (see _live_starters).
+
+    Yahoo's scoreboard sends one team projection and no per-player ones. It's
+    used as `projected`; whether it also updates live during games is still
+    unconfirmed, so `live_projected` is left None (shown as "—") rather than
+    presenting a possibly-static number as live. None if Keith's team has no
+    head-to-head matchup (e.g. the Guillotine league).
+    """
+    league = _connect(league_id, oauth_path, store_token)
+    raw = league.matchups(week=week)
+    scoreboard = raw["fantasy_content"]["league"][1]["scoreboard"]["0"]["matchups"]
+
+    for key, entry in scoreboard.items():
+        if key == "count":
+            continue
+        teams = entry["matchup"]["0"]["teams"]
+        sides = []
+        for team_key in ("0", "1"):
+            if team_key not in teams:
+                continue
+            meta = _merge_yahoo_items(teams[team_key]["team"][0])
+            figures = teams[team_key]["team"][1]
+            sides.append(
+                {
+                    "team_key": meta["team_key"],
+                    "platform_team_id": str(meta["team_id"]),
+                    "score": float(figures["team_points"]["total"]),
+                    "projected": float(figures["team_projected_points"]["total"])
+                    if figures.get("team_projected_points")
+                    else None,
+                    "live_projected": None,
+                }
+            )
+        mine = next((s for s in sides if s["platform_team_id"] == str(my_platform_team_id)), None)
+        if mine is None:
+            continue
+        other = next((s for s in sides if s is not mine), None)
+        for side in (mine, other):
+            if side is not None:
+                side["starters"] = _live_starters(league, side.pop("team_key"), week)
+        return {"me": mine, "opponent": other}
+    return None

@@ -69,6 +69,7 @@ def create_app() -> Flask:
     from ffassistant.api.rankings import rankings_admin_bp, rankings_bp
     from ffassistant.api.refresh import refresh_bp
     from ffassistant.api.schedule import schedule_bp
+    from ffassistant.api.scoreboard import scoreboard_bp
     from ffassistant.api.season import season_bp
     from ffassistant.api.wl import wl_bp
 
@@ -84,6 +85,7 @@ def create_app() -> Flask:
     app.register_blueprint(refresh_bp)
     app.register_blueprint(exposure_bp)
     app.register_blueprint(schedule_bp)
+    app.register_blueprint(scoreboard_bp)
     app.register_blueprint(season_bp)
     app.register_blueprint(wl_bp)
 
