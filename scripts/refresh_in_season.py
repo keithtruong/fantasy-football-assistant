@@ -21,6 +21,7 @@ a week.
 import argparse
 import sys
 
+from ffassistant import run_log
 from ffassistant.db import get_connection
 from ffassistant.refresh import run_full_refresh
 
@@ -38,4 +39,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Heartbeat for the ops watchdog/status page — see ffassistant.run_log.
+    sys.exit(run_log.run_logged("in_season_refresh", main))

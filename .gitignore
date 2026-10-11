@@ -35,12 +35,15 @@ data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db.bak-*
+data/*.db-journal.bak-*
 
 # Cached platform data (large, regenerable from the live API)
 data/*.json
 
-# Logs
+# Logs (incl. the ops run log/status snapshot and local alert log — see
+# ffassistant/run_log.py and ffassistant/notify.py)
 *.log
+data/*.jsonl
 data/refresh_log.txt
 
 # Weekly recap workflow: in-progress narrative briefs/stubs and rendered

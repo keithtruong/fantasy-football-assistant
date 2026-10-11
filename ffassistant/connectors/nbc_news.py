@@ -10,6 +10,8 @@ change on NBC's side; a connector that scraped specific class names here would
 defeat that.
 """
 
+from dataclasses import dataclass
+
 import requests
 from bs4 import BeautifulSoup, Comment
 
@@ -54,3 +56,55 @@ def _clean(html: str) -> str:
         comment.extract()
 
     return str(root)
+
+
+# ---------------------------------------------------------------------------
+# Lightweight change detection for the real-time news watcher
+# (ffassistant.news_watch). Unlike fetch_recent_pages() above, this does pull
+# individual items out of the page — but only by the one attribute the rest
+# of the news pipeline already depends on (each item's `data-share-url`
+# permalink, which ffassistant.ingest.news dedupes on), plus a generic DOM
+# walk. No NBC class names or field-level selectors: if the markup changes
+# enough to lose the permalink, both pipelines break together and the
+# watcher reports "0 permalinked items" as an error rather than silently
+# going quiet.
+# ---------------------------------------------------------------------------
+
+_SHARE_ATTR = "data-share-url"
+_LEAD_FRAGMENTS = 6  # enough text fragments to cover "First Last TEAM Position"
+
+
+@dataclass(frozen=True)
+class FeedItem:
+    link: str
+    slug: str  # last path segment of the permalink — a slugified headline
+    lead_text: str  # the item's first few text fragments; the subject player's name leads
+
+
+def fetch_page_html(page_num: int = 1) -> str:
+    resp = requests.get(BASE_URL, params={"p": page_num}, timeout=30)
+    resp.raise_for_status()
+    return resp.text
+
+
+def extract_feed_items(html: str) -> list[FeedItem]:
+    """Every permalinked news item on one archive page, newest first (page order).
+
+    Each item's container is found by walking up from its permalink element to
+    the largest ancestor that still holds exactly one permalink — i.e. that
+    item's own block, whatever tag/class NBC happens to use for it.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+    seen_links = set()
+    for el in soup.find_all(attrs={_SHARE_ATTR: True}):
+        link = el[_SHARE_ATTR].strip()
+        if not link or link in seen_links:
+            continue
+        seen_links.add(link)
+        container = el
+        while container.parent is not None and len(container.parent.find_all(attrs={_SHARE_ATTR: True})) == 1:
+            container = container.parent
+        fragments = list(container.stripped_strings)[:_LEAD_FRAGMENTS]
+        items.append(FeedItem(link=link, slug=link.rstrip("/").rsplit("/", 1)[-1], lead_text=" ".join(fragments)))
+    return items

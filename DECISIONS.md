@@ -6,6 +6,30 @@ Newest entries at the top.
 
 ---
 
+## 2026-10-10 — Ops layer: run log, real-time news watcher, desktop/cloud split
+
+**Context:** Keith wanted the assistant to react to news faster and to keep an eye on its own scheduled work, without it taking actions for him (he sets lineups himself). The list: push alerts for important player news, a heads-up when the rankings provider's weekly rankings land on Tuesday/Wednesday, notable add/drops across leagues, orchestrating the weekly TAMS recap to GroupMe, verifying the scheduled news runs actually did something, and one digestible status view of all of it.
+
+**Decision — mostly not agents.** Five of the six are read-and-notify jobs whose logic is deterministic: "is there anything new since last time, and does it involve my players?" Those are plain scheduled code. Claude stays where it adds judgment or prose (the TAMS write-up, digest synthesis), consistent with the project's token-efficiency principle and its rule that name matching is never LLM-based. Nothing here writes to a platform, so the advisory-only scope boundary is unchanged.
+
+**Decision — split by what each side is good at.** The desktop (native Windows scheduled tasks) does everything that polls or needs local data — rosters, credentials, the gitignored rankings config — at a 5-minute cadence for free. The cloud (Claude scheduled tasks, hourly at most) does what the desktop structurally can't: notice that the desktop itself is down (a local watchdog dies with the machine it watches), host a status page readable from a phone, and write prose. The two sides meet at one file, `data/ops_status.json`; the cloud never opens the SQLite database, which also sidesteps the network-mount locking problem.
+
+**Built first: the run log (`ffassistant/run_log.py`).** Every job records one heartbeat per run — status (ok/skipped/error), item count, note, error — to an append-only `data/run_log.jsonl` plus an atomically rewritten per-job snapshot, `data/ops_status.json`, which also keeps each job's last *successful* run time. The motivating case: the scheduled digest runs all reported "succeeded" while finishing in ~5 seconds, i.e. a run's status said it fired, not that it worked. Item counts and notes make "ran, nothing new" distinguishable from "ran, silently broken." Wired into the in-season refresh and week-results sync entry points (at `__main__`, so unit tests calling `main()` never write real log files).
+
+**Built second: the real-time Rotoworld watcher (`ffassistant/news_watch.py`, `scripts/watch_news.py`).** The existing news pipeline is batch — a scheduled Claude task extracts pages 1-3 and the sync full-replaces — which can't run every few minutes without real cost. The watcher is LLM-free end to end:
+- *Change detection:* every archive item carries a `data-share-url` permalink (already the pipeline's dedupe key). A poll diffs page 1's permalinks against a `news_seen` table; nothing new costs one HTTP request. If every item on a page is new, it pages further (up to 5) so a pre-kickoff burst isn't missed. Items are isolated by a generic DOM walk (largest ancestor holding exactly one permalink), not NBC class names, in keeping with the connector's resilience goal. Zero permalinks on page 1 raises an error rather than reading as "quiet."
+- *Matching:* each item's text leads with its subject player's name, matched by normalized-prefix against Keith's own rostered players (`teams.is_mine`) with the existing `normalize()`. Only the subject is matched — the item block also contains a related-stories strip naming other players, which would otherwise produce false hits.
+- *Triage:* the permalink slug is a slugified headline, so keyword phrases on it ("ruled out", "injured reserve", "traded", "status tbd", "likely starts", ...) mark an item urgent; everything else about his players is logged as info. Tuned once against live data (a "Bagent likely starts" item about a rostered QB initially scored as info).
+- *Cadence:* the Windows task fires every 5 minutes; the script decides per firing — every time in pre-slate windows (Thu night, Sunday morning/afternoon/night, Monday night), every ~25 minutes otherwise, never overnight — so the schedule lives in code, not in Task Scheduler triggers. Launched via `pythonw` so it doesn't flash a console window every 5 minutes. The first-ever run only seeds `news_seen`, so a backlog doesn't arrive as a burst of alerts.
+
+**Alerts go through one seam (`ffassistant/notify.py`)**, pushed via a GroupMe bot in a private group with only Keith in it. Chosen over ntfy and Pushover: least new setup (the GroupMe connector already existed), free, and GroupMe's host was already on the cloud sandbox's network allowlist, so the future cloud watchdog can use the same channel without an allowlist change. Accepted tradeoff: no priority levels or Do Not Disturb bypass. The real risk was misrouting — the existing connector falls back to the TAMS league bot when given no bot id — so alerts use their own `GROUPME_ALERTS_BOT_ID`, are never sent without it, and are refused if it equals the TAMS bot id. A failed push marks the run as an error in the run log rather than disappearing.
+
+**Registration gotcha:** the first Task Scheduler registration (`schtasks /TR`) silently failed with "file not found" — schtasks turns `'` into `"` inside /TR, and the repo folder name contains an apostrophe. Re-registered via PowerShell (`Register-ScheduledTask`) running `pythonw -m scripts.watch_news` with the repo as working directory, which needs no quoted path. Caught by the run log itself: the manual run left a heartbeat, the scheduled firings didn't.
+
+**Still to build, in order:** cloud watchdog (stale heartbeat or unreachable desktop -> push), status page, rankings-updated and notable add/drop checks, TAMS recap orchestration with approve-before-post.
+
+---
+
 ## 2026-09-22 — Fixed W-L autofill using season-cumulative points instead of that week's score
 
 **Context:** Ran `scripts/autofill_wl.py --week 2` to fill in week 2's W-L results; Keith flagged the scores as obviously too high for a single week.

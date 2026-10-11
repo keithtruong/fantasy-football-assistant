@@ -26,6 +26,11 @@ ESPN_S2 = os.environ.get("ESPN_S2")
 # this alone is enough to post; see ffassistant/connectors/groupme.py).
 GROUPME_BOT_ID = os.environ.get("GROUPME_BOT_ID")
 
+# A second, separate bot attached to a private GroupMe group with only Keith
+# in it — the push channel for ffassistant.notify alerts. Deliberately its own
+# setting: alerts must never fall back to GROUPME_BOT_ID (the TAMS league group).
+GROUPME_ALERTS_BOT_ID = os.environ.get("GROUPME_ALERTS_BOT_ID")
+
 # yahoo_oauth reads/rewrites this file directly (it stores refreshed tokens back to it).
 YAHOO_OAUTH_PATH = REPO_ROOT / ".yahoo_oauth.json"
 

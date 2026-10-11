@@ -290,6 +290,21 @@ CREATE TABLE IF NOT EXISTS player_news_digest (
     generated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Every Rotoworld item the real-time news watcher (ffassistant.news_watch)
+-- has already seen, keyed by permalink — "is there anything new since the
+-- last poll" is just a set difference against this table. player_id is set
+-- only when the item's subject is on one of Keith's own rosters; alert_level
+-- records how it was triaged ('urgent' = pushed, 'info' = logged only).
+-- Rows older than two weeks are pruned on each poll.
+CREATE TABLE IF NOT EXISTS news_seen (
+    link            TEXT PRIMARY KEY,
+    slug            TEXT,
+    lead_text       TEXT,
+    player_id       INTEGER REFERENCES players (player_id) ON DELETE SET NULL,
+    alert_level     TEXT CHECK (alert_level IS NULL OR alert_level IN ('urgent', 'info')),
+    first_seen_at   TEXT NOT NULL
+);
+
 -- Keith's own manual "target"/"avoid" call on a player, independent of rank —
 -- e.g. "shy_away" for injury/contract/scheme concerns rank alone wouldn't
 -- capture. Global per player (not per league/season): a personal read on the

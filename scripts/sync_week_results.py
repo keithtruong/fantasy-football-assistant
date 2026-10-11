@@ -32,6 +32,7 @@ import argparse
 import datetime
 import sys
 
+from ffassistant import run_log
 from ffassistant.db import get_connection
 from ffassistant.ingest.espn import sync_box_scores, sync_free_agent_scores
 from ffassistant.season import FIRST_WEEK, smart_current_week
@@ -88,4 +89,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Heartbeat for the ops watchdog/status page — see ffassistant.run_log.
+    sys.exit(run_log.run_logged("week_results_sync", main))
