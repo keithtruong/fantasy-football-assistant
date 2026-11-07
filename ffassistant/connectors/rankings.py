@@ -17,6 +17,7 @@ Two distinct fetch mechanisms:
 import html
 import json
 import re
+import time
 
 import requests
 
@@ -123,13 +124,31 @@ def _extract_rows(html: str) -> list[dict]:
     return rows
 
 
+# The provider's server intermittently resets the connection mid-request
+# (ConnectionResetError 10054) even though an immediate re-fetch succeeds, so
+# connection-level failures get a few spaced-out retries before giving up.
+# HTTP error statuses aren't retried — those mean something real (bad cookie,
+# moved page) that another attempt won't fix.
+_RETRY_DELAYS = (2, 5)
+
+
+def _get_with_retry(url: str, **kwargs) -> requests.Response:
+    for delay in (*_RETRY_DELAYS, None):
+        try:
+            return requests.get(url, **kwargs)
+        except (requests.ConnectionError, requests.Timeout):
+            if delay is None:
+                raise
+            time.sleep(delay)
+
+
 def _fetch_with_cookie(url: str) -> str:
     config = get_rankings_config()
     cookies = {}
     name, _, value = config["cookie"].partition("=")
     cookies[name.strip()] = value.strip()
 
-    resp = requests.get(url, headers=_HEADERS, cookies=cookies, timeout=30)
+    resp = _get_with_retry(url, headers=_HEADERS, cookies=cookies, timeout=30)
     resp.raise_for_status()
     return _decode_utf8_with_cp1252_leaks(resp.content)
 
@@ -288,7 +307,7 @@ def get_weekly_rankings(season: int, week: int, position: str, scoring_format: s
         "scoring": scoring_code,
         "type": "WEEKLY",
     }
-    resp = requests.get(weekly_config["base_url"], params=params, timeout=30)
+    resp = _get_with_retry(weekly_config["base_url"], params=params, timeout=30)
     resp.raise_for_status()
     data = _parse_jsonp(resp.text)
 

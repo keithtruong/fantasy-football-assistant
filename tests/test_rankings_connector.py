@@ -327,3 +327,22 @@ class TestGetTiers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGetWithRetry(unittest.TestCase):
+    @patch("ffassistant.connectors.rankings.time.sleep")
+    @patch("ffassistant.connectors.rankings.requests.get")
+    def test_retries_connection_reset_then_succeeds(self, mock_get, mock_sleep):
+        ok = MagicMock()
+        mock_get.side_effect = [rankings.requests.ConnectionError("reset"), ok]
+        self.assertIs(rankings._get_with_retry("https://example.invalid"), ok)
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once()
+
+    @patch("ffassistant.connectors.rankings.time.sleep")
+    @patch("ffassistant.connectors.rankings.requests.get")
+    def test_raises_after_retries_exhausted(self, mock_get, mock_sleep):
+        mock_get.side_effect = rankings.requests.ConnectionError("reset")
+        with self.assertRaises(rankings.requests.ConnectionError):
+            rankings._get_with_retry("https://example.invalid")
+        self.assertEqual(mock_get.call_count, len(rankings._RETRY_DELAYS) + 1)
