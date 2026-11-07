@@ -6,6 +6,36 @@ Newest entries at the top.
 
 ---
 
+## 2026-10-13 — Cloud watchdog for the desktop automation
+
+**Context:** Every automated job runs on the desktop and leaves a heartbeat, but nothing on the desktop can report that the desktop itself stopped (asleep, off, Task Scheduler not firing). That failure would look exactly like a quiet news day.
+
+**Decision — the check is code, the cloud only runs it.** The health rules live in `ffassistant/ops_check.py` (pure, clock-injected, 13 tests), executed by `scripts/ops_check.py` on the desktop through the device link. Each cloud run is one command and a one-line result, so a run that finds nothing costs almost nothing, and the rules are testable instead of living in a prompt.
+
+**Rules:** news watcher stale (>45 min during the day) or erroring; Tuesday recap prep missing or failed after 9am; in-season refresh stale (>4 days) once it has ever reported; player digests more than a day behind their request, or written empty; Rotoworld extraction older than 3 days. Each problem has a stable key: it alerts when a problem appears, stays quiet while it persists, and sends a "recovered" note when it clears.
+
+**Cadence:** every 3 hours through the day, plus hourly during the windows where a dead news watcher costs the most (Sunday morning, Monday and Thursday evenings, plus the Sunday-night slate). That's a compromise between catching outages and the plan cost of a Claude session per check.
+
+**Desktop-down path:** when the desktop can't be reached, the cloud run can't use the desktop's alerts bot (its id lives in the desktop's `.env`), so the run's own push notification carries the alert. **Open question:** these tasks are bound to the desktop, and it's not yet verified whether the platform still starts a run (so it can report "unreachable") when that computer is offline, or skips it. Needs a deliberate test with the desktop asleep during a scheduled run.
+
+**Found while building:** the in-season refresh hasn't written a heartbeat since heartbeats were added on 10/10, and its log's last entry is Saturday 10/10. Either it isn't scheduled that early in the week or it isn't running; the watchdog starts checking it as soon as it reports once.
+
+---
+
+## 2026-10-13 — Weekly TAMS recap: chained after the data sync, approval before anything reaches the league
+
+**Context:** Only the Tuesday data sync was scheduled; the recap (narratives, render, publish, GroupMe post) was still a manual session each week. Keith asked for the recap to run automatically once the data is in.
+
+**Found while building it:** `sync_week_results` defaults to the week that just ended (`smart_current_week() - 1`), while `prepare_weekly_recap` defaults to the current week. That's right for a mid-week manual run but wrong on a Tuesday, when the current week hasn't been played. Run back to back with no arguments, they'd build a brief for an unplayed week. Fixed with `scripts/weekly_recap_prep.py`, which resolves the week once and passes it explicitly to both; the existing Tuesday task now runs it.
+
+**Decision — chain by state, not by trigger.** The desktop can't trigger a cloud task directly, so the cloud task (hourly Tuesday 8:59-11:59) reads two things: the `recap_prep` heartbeat in `ops_status.json` and a per-week stage file (`brief_ready -> drafted -> published`). It drafts only when the stage is `brief_ready`, stays quiet while the desktop hasn't run yet, alerts Keith if the prep failed or never ran by the last firing, and never redrafts or re-alerts once a week is `drafted`. Stages only move forward, so a rerun of the sync can't reopen a recap that's already gone out.
+
+**Decision — approval gate before publishing, not before posting.** The recap hub page is shared by link and updates are live immediately, so adding a week to it *is* publishing to the league. The gate therefore sits before the page update: the task renders locally, sends Keith the preview in its own session plus an alert to his private GroupMe, and only after he approves there does it update the hub and post the link to TAMS.
+
+**Supporting script:** `scripts/recap_injury_scan.py` turns the required injury check into a short reading list (Rotoworld items since the week started, matched to featured players by the item's lead, filtered to real injury language or Rotoworld's "(ankle)" status tags). First version matched words like "back" and flagged nearly every game note; tightened before use. It gathers only; deciding what belongs in a narrative stays with the writer.
+
+---
+
 ## 2026-10-10 — Ops layer: run log, real-time news watcher, desktop/cloud split
 
 **Context:** Keith wanted the assistant to react to news faster and to keep an eye on its own scheduled work, without it taking actions for him (he sets lineups himself). The list: push alerts for important player news, a heads-up when the rankings provider's weekly rankings land on Tuesday/Wednesday, notable add/drops across leagues, orchestrating the weekly TAMS recap to GroupMe, verifying the scheduled news runs actually did something, and one digestible status view of all of it.
@@ -555,3 +585,9 @@ git push -u origin main
 ```
 
 **Next up:** high-level discussion of project scope (leagues, platforms, core use cases) before any architecture or tooling decisions are made.
+
+## 2026-10-19 — Watchdog refresh limit raised from 4 to 7 days
+
+**Context:** The watchdog alerted "In-season refresh hasn't succeeded since 4 days ago" on Mon 10/19. Task Scheduler showed the task was healthy: it last ran Wed 10/14 at 9pm with result 0, had no missed runs, and was next due Tue 10/20 at 7:30pm. Its Tue/Wed-only schedule leaves a gap of almost 6 days, so the 4-day limit would have alerted every week.
+
+**Fix:** `REFRESH_MAX_AGE` is now 7 days. Also added a Sunday 10:45am CT trigger, after inactives are announced and before the noon kickoffs, so lineups get fresh statuses and news. Keith added it in an elevated PowerShell window because the task runs S4U. Note that the in-app "Refresh All Leagues" button doesn't write the `in_season_refresh` heartbeat. Only the scheduled script does.
