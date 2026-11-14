@@ -234,6 +234,19 @@ function summarizeRefreshAll(result) {
   return parts.join(" · ");
 }
 
+// Weekly/ROS refresh every scoring format at once, so the status line says
+// how many formats landed and names any that failed — a partial failure
+// shouldn't read like a clean refresh.
+function describeMultiFormatSync(result) {
+  const synced = result.formats_synced || [];
+  const failed = Object.values(result.errors || {});
+  let text = `${formatSyncedAt(result.synced_at)} — ${result.player_count} players`;
+  if (synced.length > 1 || failed.length) text += `, ${synced.length} formats refreshed`;
+  if (result.unresolved_count) text += `, ${result.unresolved_count} unresolved`;
+  if (failed.length) text += ` — FAILED ${failed.join("; ")}`;
+  return text;
+}
+
 async function refreshSyncStatus() {
   try {
     const status = await api.getRankingsSyncStatus(state.season, state.scoringFormat);
@@ -448,10 +461,8 @@ function init() {
     weeklyRankingsSyncStatus.className = "rankings-sync-status";
     try {
       const result = await api.syncWeeklyRankings(state.season, state.week, state.leagueId);
-      const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
-      weeklyRankingsSyncStatus.textContent =
-        `${formatSyncedAt(result.synced_at)} — ${result.player_count} players${unresolvedNote}`;
-      weeklyRankingsSyncStatus.className = result.unresolved_count
+      weeklyRankingsSyncStatus.textContent = describeMultiFormatSync(result);
+      weeklyRankingsSyncStatus.className = (result.unresolved_count || Object.keys(result.errors || {}).length)
         ? "rankings-sync-status rankings-sync-warning"
         : "rankings-sync-status";
       await renderActive();
@@ -469,10 +480,8 @@ function init() {
     rosRankingsSyncStatus.className = "rankings-sync-status";
     try {
       const result = await api.syncRosRankings(state.season, state.leagueId);
-      const unresolvedNote = result.unresolved_count ? `, ${result.unresolved_count} unresolved` : "";
-      rosRankingsSyncStatus.textContent =
-        `${formatSyncedAt(result.synced_at)} — ${result.player_count} players${unresolvedNote}`;
-      rosRankingsSyncStatus.className = result.unresolved_count
+      rosRankingsSyncStatus.textContent = describeMultiFormatSync(result);
+      rosRankingsSyncStatus.className = (result.unresolved_count || Object.keys(result.errors || {}).length)
         ? "rankings-sync-status rankings-sync-warning"
         : "rankings-sync-status";
       await renderActive();

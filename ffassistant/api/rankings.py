@@ -107,6 +107,12 @@ def sync_weekly_rankings():
     Weekly Rankings" button only ever has the draft board's superflex-aware
     format handy (from GET /api/leagues), which isn't a valid weekly format on
     its own, so it passes league_id instead of trying to translate that itself.
+
+    Pass `all_formats: true` to sync every weekly format in one go (what the
+    "Refresh Weekly Rankings" button does). Refreshing only the viewed
+    league's format left other leagues quietly stale: a PPR refresh never
+    touched the format a different league reads. With all_formats, league_id
+    only decides which format's counts the response leads with.
     """
     db = get_db()
     body = request.get_json(silent=True) or {}
@@ -127,10 +133,12 @@ def sync_weekly_rankings():
     from ffassistant.ingest import rankings as rankings_ingest
     from ffassistant.name_matching import list_unresolved
 
-    try:
-        rankings_ingest.sync_weekly_rankings(db, season, week, scoring_format)
-    except Exception as e:
-        abort(502, description=f"Weekly rankings sync failed: {e}")
+    from ffassistant.refresh import WEEKLY_SCORING_FORMATS
+
+    formats = WEEKLY_SCORING_FORMATS if body.get("all_formats") else (scoring_format,)
+    errors = _sync_each(formats, lambda fmt: rankings_ingest.sync_weekly_rankings(db, season, week, fmt))
+    if len(errors) == len(formats):
+        abort(502, description="Weekly rankings sync failed: " + "; ".join(errors.values()))
 
     player_count = db.execute(
         "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'weekly' AND season = ? AND week = ? "
@@ -145,6 +153,8 @@ def sync_weekly_rankings():
             "unresolved_count": unresolved_count,
             "synced_at": _last_synced_at_weekly(db, season, week, scoring_format),
             "scoring_format": scoring_format,
+            "formats_synced": [fmt for fmt in formats if fmt not in errors],
+            "errors": errors,
         }
     )
 
@@ -181,6 +191,8 @@ def sync_ros_rankings():
     convention as /sync_weekly, for the same reason: the frontend's rank
     list only ever has the draft board's superflex-aware format handy,
     which isn't one of ROS's two valid values on its own.
+
+    `all_formats: true` syncs both ROS flavors, same reasoning as /sync_weekly.
     """
     db = get_db()
     body = request.get_json(silent=True) or {}
@@ -197,10 +209,12 @@ def sync_ros_rankings():
     from ffassistant.ingest import rankings as rankings_ingest
     from ffassistant.name_matching import list_unresolved
 
-    try:
-        rankings_ingest.sync_ros_rankings(db, season, scoring_format)
-    except Exception as e:
-        abort(502, description=f"ROS rankings sync failed: {e}")
+    from ffassistant.refresh import ROS_SCORING_FORMATS
+
+    formats = ROS_SCORING_FORMATS if body.get("all_formats") else (scoring_format,)
+    errors = _sync_each(formats, lambda fmt: rankings_ingest.sync_ros_rankings(db, season, fmt))
+    if len(errors) == len(formats):
+        abort(502, description="ROS rankings sync failed: " + "; ".join(errors.values()))
 
     player_count = db.execute(
         "SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'ros' AND season = ? AND scoring_format = ?",
@@ -214,6 +228,8 @@ def sync_ros_rankings():
             "unresolved_count": unresolved_count,
             "synced_at": _last_synced_at(db, "ros", season, scoring_format),
             "scoring_format": scoring_format,
+            "formats_synced": [fmt for fmt in formats if fmt not in errors],
+            "errors": errors,
         }
     )
 
@@ -233,6 +249,18 @@ def get_sync_status_ros():
         scoring_format = request.args.get("scoring_format", "full_ppr")
 
     return jsonify({"synced_at": _last_synced_at(db, "ros", season, scoring_format), "scoring_format": scoring_format})
+
+
+def _sync_each(formats, sync_one):
+    """Runs sync_one(fmt) for every format, carrying on past failures so one
+    bad format doesn't block the rest. Returns {format: error message}."""
+    errors = {}
+    for fmt in formats:
+        try:
+            sync_one(fmt)
+        except Exception as e:
+            errors[fmt] = f"{fmt}: {e}"
+    return errors
 
 
 def _last_synced_at(db, ranking_type, season, scoring_format):

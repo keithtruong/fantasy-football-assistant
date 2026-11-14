@@ -65,6 +65,39 @@ class TestWeeklyRankingsSyncApi(ApiTestCase):
         self.assertEqual(resp.status_code, 502)
         self.assertIn("boom", resp.get_json()["description"])
 
+    @patch("ffassistant.ingest.rankings.sync_weekly_rankings")
+    def test_all_formats_syncs_every_weekly_format_not_just_the_leagues(self, mock_sync):
+        # Regression: the button used to refresh only the viewed league's
+        # format, leaving other leagues on stale weekly rankings.
+        resp = self.client.post(
+            "/api/rankings/sync_weekly", json={"season": 2026, "week": 3, "league_id": 1, "all_formats": True}
+        )
+        self.assertEqual(resp.status_code, 200)
+        synced = [c.args[3] for c in mock_sync.call_args_list]
+        self.assertEqual(synced, ["full_ppr", "half_ppr", "non_ppr"])
+        data = resp.get_json()
+        self.assertEqual(data["scoring_format"], "full_ppr")  # league 1's own format leads the status line
+        self.assertEqual(data["formats_synced"], ["full_ppr", "half_ppr", "non_ppr"])
+        self.assertEqual(data["errors"], {})
+
+    @patch("ffassistant.ingest.rankings.sync_weekly_rankings")
+    def test_all_formats_keeps_going_past_one_failure(self, mock_sync):
+        def fail_half_ppr(_db, _season, _week, fmt):
+            if fmt == "half_ppr":
+                raise RuntimeError("down")
+
+        mock_sync.side_effect = fail_half_ppr
+        resp = self.client.post("/api/rankings/sync_weekly", json={"season": 2026, "week": 3, "all_formats": True})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["formats_synced"], ["full_ppr", "non_ppr"])
+        self.assertIn("half_ppr", data["errors"])
+
+    @patch("ffassistant.ingest.rankings.sync_weekly_rankings", side_effect=RuntimeError("boom"))
+    def test_all_formats_failing_everywhere_is_502(self, _mock):
+        resp = self.client.post("/api/rankings/sync_weekly", json={"season": 2026, "week": 3, "all_formats": True})
+        self.assertEqual(resp.status_code, 502)
+
 
 class TestWeeklySyncStatusApi(ApiTestCase):
     def test_missing_week_is_400(self):
@@ -125,6 +158,13 @@ class TestRosRankingsSyncApi(ApiTestCase):
         self.assertEqual(resp.get_json()["scoring_format"], "superflex")
         args, _kwargs = mock_sync.call_args
         self.assertEqual(args[2], "superflex")
+
+    @patch("ffassistant.ingest.rankings.sync_ros_rankings")
+    def test_all_formats_syncs_both_ros_flavors(self, mock_sync):
+        resp = self.client.post("/api/rankings/sync_ros", json={"season": 2026, "league_id": 1, "all_formats": True})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual([c.args[2] for c in mock_sync.call_args_list], ["half_ppr", "superflex"])
+        self.assertEqual(resp.get_json()["formats_synced"], ["half_ppr", "superflex"])
 
 
 class TestRosSyncStatusApi(ApiTestCase):

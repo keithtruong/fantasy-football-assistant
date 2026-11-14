@@ -591,3 +591,11 @@ git push -u origin main
 **Context:** The watchdog alerted "In-season refresh hasn't succeeded since 4 days ago" on Mon 10/19. Task Scheduler showed the task was healthy: it last ran Wed 10/14 at 9pm with result 0, had no missed runs, and was next due Tue 10/20 at 7:30pm. Its Tue/Wed-only schedule leaves a gap of almost 6 days, so the 4-day limit would have alerted every week.
 
 **Fix:** `REFRESH_MAX_AGE` is now 7 days. Also added a Sunday 10:45am CT trigger, after inactives are announced and before the noon kickoffs, so lineups get fresh statuses and news. Keith added it in an elevated PowerShell window because the task runs S4U. Note that the in-app "Refresh All Leagues" button doesn't write the `in_season_refresh` heartbeat. Only the scheduled script does.
+
+## 2026-11-14 — Weekly and ROS refresh buttons now refresh every scoring format
+
+**Context:** "Refresh Weekly Rankings" only refreshed the scoring format of the league being viewed. Keith refreshed weekly rankings while viewing a PPR league, but his Superflex league reads a different format, so it kept stale rankings and he missed a big waiver/lineup opportunity. The ROS button had the same problem: it refreshed only one of its two formats (half-PPR or superflex).
+
+**Fix:** Both buttons now send `all_formats: true`. The server syncs every format, the same set the scheduled full refresh uses (`WEEKLY_SCORING_FORMATS`/`ROS_SCORING_FORMATS` in `ffassistant/refresh.py`). One format failing doesn't stop the others. The response names any formats that failed, and the status line turns into a warning so a partial failure doesn't look like a clean refresh. The request returns 502 only if every format fails. The viewed league still decides which format's player count shows in the status line.
+
+**Alternative considered:** Keeping the button per-league and adding a warning that other formats are stale. Rejected because one extra provider fetch per format costs very little next to a missed pickup, and the per-league scope was never something Keith wanted.
