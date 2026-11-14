@@ -35,6 +35,11 @@ _HEADERS = {
 _JSON_MARKER = "JSON.parse(`{"
 _JSON_STRING_MARKER = 'JSON.parse("{'
 
+# A members-only page served without a valid session carries these classes on
+# its <body> and swaps the data for a subscribe form. The cookie's own embedded
+# expiry can still be years out when this happens: the server revoked it.
+_PAYWALL_BODY = re.compile(r"<body[^>]*\b(access-restricted|has-membership-paywall)\b")
+
 # Tier pages are editorial copy, occasionally pasted in from a Windows-1252
 # source (Word/Google Docs smart quotes) into an otherwise UTF-8 page. A lone
 # leaked byte like 0x92 is invalid as a UTF-8 lead byte, so a strict/replace
@@ -73,6 +78,12 @@ def _extract_rows(html: str) -> list[dict]:
         # republish) embeds the same payload as an escaped double-quoted string.
         start = html.find(_JSON_STRING_MARKER)
         if start == -1:
+            if _PAYWALL_BODY.search(html):
+                raise ValueError(
+                    "Rankings page served its logged-out paywall — the session cookie in "
+                    ".rankings_config.json has been revoked; log in again in a browser and "
+                    "copy the fresh logged-in cookie into the config"
+                )
             raise ValueError(
                 "Ranking data marker not found in page — session cookie may be "
                 "invalid/expired, or the page's data format changed"

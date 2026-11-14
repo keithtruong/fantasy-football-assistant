@@ -30,6 +30,11 @@ class TestExtractRows(unittest.TestCase):
         with self.assertRaises(ValueError):
             rankings._extract_rows("<html>not logged in</html>")
 
+    def test_paywall_page_reports_revoked_cookie(self):
+        html = '<html><body class="single access-restricted has-membership-paywall">subscribe</body></html>'
+        with self.assertRaisesRegex(ValueError, "paywall"):
+            rankings._extract_rows(html)
+
     def test_handles_braces_inside_string_values(self):
         rows_with_braces = [{"player": "Player {with} braces", "etrRank": 1}]
         html = make_page_html(rows_with_braces)
