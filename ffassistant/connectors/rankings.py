@@ -174,11 +174,15 @@ def get_draft_rankings(scoring_format: str) -> list[dict]:
     text = _fetch_with_cookie(url)
 
     rows = _extract_rows(text)
+    # The draft page's rank/position-rank keys are provider-branded, so their
+    # names live in the local config (draft_fields), not in this public code.
+    rank_key = config["draft_fields"]["rank"]
+    position_rank_key = config["draft_fields"]["position_rank"]
 
     rankings = []
     for row in rows:
         player = row.get("player")
-        rank = row.get("etrRank")
+        rank = row.get(rank_key)
         if not player or rank in (None, ""):
             continue
         rankings.append(
@@ -188,7 +192,7 @@ def get_draft_rankings(scoring_format: str) -> list[dict]:
                 "nfl_team": (row.get("team") or "").upper() or None,
                 "rank": int(rank),
                 "adp": float(row["adp"]) if row.get("adp") not in (None, "") else None,
-                "position_rank": row.get("posRankEtr") or None,
+                "position_rank": row.get(position_rank_key) or None,
             }
         )
     return rankings

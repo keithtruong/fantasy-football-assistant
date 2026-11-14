@@ -13,9 +13,9 @@ def make_page_html(rows: list[dict]) -> str:
 
 
 FAKE_ROWS = [
-    {"player": "Ja'Marr Chase", "position": "wr", "team": "cin", "etrRank": 1, "adp": 1.2, "posRankEtr": "WR1"},
-    {"player": "Christian McCaffrey", "position": "rb", "team": "sf", "etrRank": 2, "adp": 2.5, "posRankEtr": "RB1"},
-    {"player": "No Rank Guy", "position": "wr", "team": "nyj", "etrRank": None, "adp": None, "posRankEtr": None},
+    {"player": "Ja'Marr Chase", "position": "wr", "team": "cin", "draftRank": 1, "adp": 1.2, "draftPosRank": "WR1"},
+    {"player": "Christian McCaffrey", "position": "rb", "team": "sf", "draftRank": 2, "adp": 2.5, "draftPosRank": "RB1"},
+    {"player": "No Rank Guy", "position": "wr", "team": "nyj", "draftRank": None, "adp": None, "draftPosRank": None},
 ]
 
 
@@ -36,7 +36,7 @@ class TestExtractRows(unittest.TestCase):
             rankings._extract_rows(html)
 
     def test_handles_braces_inside_string_values(self):
-        rows_with_braces = [{"player": "Player {with} braces", "etrRank": 1}]
+        rows_with_braces = [{"player": "Player {with} braces", "draftRank": 1}]
         html = make_page_html(rows_with_braces)
         rows = rankings._extract_rows(html)
         self.assertEqual(rows[0]["player"], "Player {with} braces")
@@ -57,6 +57,7 @@ class TestGetDraftRankings(unittest.TestCase):
         mock_config.return_value = {
             "cookie": "session_name=abc123",
             "draft_urls": {"full_ppr": "https://example.invalid/full-ppr"},
+            "draft_fields": {"rank": "draftRank", "position_rank": "draftPosRank"},
         }
         mock_response = MagicMock()
         mock_response.content = make_page_html(FAKE_ROWS).encode("utf-8")
@@ -72,6 +73,7 @@ class TestGetDraftRankings(unittest.TestCase):
         self.assertEqual(result[0]["nfl_team"], "CIN")
         self.assertEqual(result[0]["rank"], 1)
         self.assertEqual(result[0]["adp"], 1.2)
+        self.assertEqual(result[0]["position_rank"], "WR1")
 
         # Cookie was passed through to the request.
         _, kwargs = mock_get.call_args
@@ -79,7 +81,7 @@ class TestGetDraftRankings(unittest.TestCase):
 
 
 # Real field names confirmed against the live page — different from the
-# draft Top-300's rows (rank/posRank here, not etrRank/posRankEtr, and no
+# draft Top-300's rows (rank/posRank here, not the draft page's own keys, and no
 # adp), plus a 'site' field distinguishing the two formats mixed together
 # in one payload.
 FAKE_ROS_ROWS = [

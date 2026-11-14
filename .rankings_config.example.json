@@ -6,6 +6,10 @@
         "non_ppr": "",
         "superflex": ""
     },
+    "draft_fields": {
+        "rank": "",
+        "position_rank": ""
+    },
     "weekly": {
         "base_url": "",
         "expert_id": ""

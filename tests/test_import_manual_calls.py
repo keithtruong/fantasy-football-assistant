@@ -92,8 +92,8 @@ class TestImportManualCalls(unittest.TestCase):
 
     def test_source_used_for_matching_is_generic(self):
         # Confidentiality rule: no provider-specific string in the source tag.
-        self.assertNotIn("etr", MANUAL_NOTES_SOURCE.lower())
-        self.assertNotIn("podcast", MANUAL_NOTES_SOURCE.lower())
+        # Pinned to the exact generic value so the test needn't name the provider.
+        self.assertEqual(MANUAL_NOTES_SOURCE, "manual_player_notes")
 
     def test_rerun_is_idempotent_on_tags(self):
         with tempfile.TemporaryDirectory() as tmp:
