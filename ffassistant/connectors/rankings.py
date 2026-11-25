@@ -19,18 +19,18 @@ import json
 import re
 import time
 
-import requests
+# curl_cffi rather than plain requests: the provider's site sits behind Cloudflare
+# bot protection, which started answering plain-requests fetches (cookie or not)
+# with a 403 challenge page. impersonate="chrome" sends a real Chrome TLS/HTTP2
+# fingerprint and headers, which gets through. Same requests-style API.
+from curl_cffi import requests
+from curl_cffi.requests import exceptions as curl_exceptions
 
 from ffassistant.config import get_rankings_config
 
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-}
+# Browser fingerprint (TLS, HTTP/2, User-Agent and other default headers) to
+# present — see the curl_cffi import note above.
+_IMPERSONATE = "chrome"
 
 _JSON_MARKER = "JSON.parse(`{"
 _JSON_STRING_MARKER = 'JSON.parse("{'
@@ -146,8 +146,8 @@ _RETRY_DELAYS = (2, 5)
 def _get_with_retry(url: str, **kwargs) -> requests.Response:
     for delay in (*_RETRY_DELAYS, None):
         try:
-            return requests.get(url, **kwargs)
-        except (requests.ConnectionError, requests.Timeout):
+            return requests.get(url, impersonate=_IMPERSONATE, **kwargs)
+        except (curl_exceptions.ConnectionError, curl_exceptions.Timeout):
             if delay is None:
                 raise
             time.sleep(delay)
@@ -159,7 +159,7 @@ def _fetch_with_cookie(url: str) -> str:
     name, _, value = config["cookie"].partition("=")
     cookies[name.strip()] = value.strip()
 
-    resp = _get_with_retry(url, headers=_HEADERS, cookies=cookies, timeout=30)
+    resp = _get_with_retry(url, cookies=cookies, timeout=30)
     resp.raise_for_status()
     return _decode_utf8_with_cp1252_leaks(resp.content)
 
